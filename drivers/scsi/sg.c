@@ -1683,12 +1683,12 @@ static int sg_start_req(Sg_request *srp, unsigned char *cmd)
 		return -ENOMEM;
 	}
 
+	blk_rq_set_block_pc(rq);
+
 	if (hp->cmd_len > BLK_MAX_CDB)
 		rq->cmd = long_cmdp;
 	memcpy(rq->cmd, cmd, hp->cmd_len);
-
 	rq->cmd_len = hp->cmd_len;
-	rq->cmd_type = REQ_TYPE_BLOCK_PC;
 
 	srp->rq = rq;
 	rq->end_io_data = srp;
