@@ -303,11 +303,6 @@ void stml0xx_initialize_work_func(struct work_struct *work)
 		}
 	}
 
-	err = stml0xx_led_set_reset(&ps_stml0xx->led_cdev,
-			RESET_NOT_ALLOWED);
-	if (err < 0)
-		ret_err =  err;
-
 	/* Enable sensors last after other initialization is done */
 	buf[0] = stml0xx_g_nonwake_sensor_state & 0xFF;
 	buf[1] = (stml0xx_g_nonwake_sensor_state >> 8) & 0xFF;
