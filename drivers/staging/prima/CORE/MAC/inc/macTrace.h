@@ -36,19 +36,13 @@
 
   ========================================================================*/
 
-
-
 #ifndef __MAC_TRACE_H
 #define __MAC_TRACE_H
 
 #include "aniGlobal.h"
 
-
-#ifdef TRACE_RECORD
-
 #define MAC_TRACE_GET_MODULE_ID(data) ((data >> 8) & 0xff)
 #define MAC_TRACE_GET_MSG_ID(data)       (data & 0xffff)
-
 
 #define eLOG_NODROP_MISSED_BEACON_SCENARIO 0
 #define eLOG_PROC_DEAUTH_FRAME_SCENARIO 1
@@ -79,6 +73,3 @@ tANI_U8* macTraceGetLimMlmState(tANI_U16 mlmState);
 tANI_U8* macTraceGetTLState(tANI_U16 tlState);
 
 #endif
-
-#endif
-
