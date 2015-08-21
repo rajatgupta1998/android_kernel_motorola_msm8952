@@ -1163,7 +1163,7 @@ static int msm_isp_axi_stream_enable_cfg(
 			}
 			for (vfe_id = 0; vfe_id < MAX_VFE; vfe_id++) {
 				vfe_dev->hw_info->vfe_ops.axi_ops.
-				enable_wm(dual_vfe_res->vfe_dev[vfe_id],
+				enable_wm(dual_vfe_res->vfe_base[vfe_id],
 				dual_vfe_res->axi_data[vfe_id]->
 				stream_info[stream_idx].wm[i],
 				enable_wm);
@@ -1173,8 +1173,8 @@ static int msm_isp_axi_stream_enable_cfg(
 			stream_info->stream_src <= RDI_INTF_2) ||
 			!dual_vfe_sync) {
 			vfe_dev->hw_info->vfe_ops.axi_ops.
-			enable_wm(vfe_dev, stream_info->wm[i],
-				enable_wm);
+			enable_wm(vfe_dev->vfe_base, stream_info->wm[i],
+					enable_wm);
 		}
 		if (!enable_wm) {
 			/* Issue a reg update for Raw Snapshot Case
@@ -1438,16 +1438,18 @@ int msm_isp_print_ping_pong_address(struct vfe_device *vfe_dev)
 					pr_err("%s: buf NULL\n", __func__);
 					continue;
 				}
-				pr_err("%s: stream_id %x ping-pong %d plane %d start_addr %x addr_offset %x len %lx stride %d scanline %d\n",
+				pr_err("%s: stream_id %x ping-pong %d plane %d start_addr %lx addr_offset %x len %lx stride %d scanline %d\n",
 					__func__, stream_info->stream_id,
-					pingpong_bit, i,
-					(uint32_t)buf->mapped_info[i].paddr,
+					pingpong_bit, i, (unsigned long)
+					buf->mapped_info[i].paddr,
 					stream_info->
 						plane_cfg[i].plane_addr_offset,
 					buf->mapped_info[i].len,
-					stream_info->plane_cfg[i].output_stride,
 					stream_info->
-						plane_cfg[i].output_scan_lines);
+						plane_cfg[i].output_stride,
+					stream_info->
+						plane_cfg[i].output_scan_lines
+					);
 			}
 		}
 	}
@@ -3469,7 +3471,8 @@ void msm_isp_axi_disable_all_wm(struct vfe_device *vfe_dev)
 		stream_info = &axi_data->stream_info[i];
 
 		for (j = 0; j < stream_info->num_planes; j++)
-			vfe_dev->hw_info->vfe_ops.axi_ops.enable_wm(vfe_dev,
+			vfe_dev->hw_info->vfe_ops.axi_ops.enable_wm(
+				vfe_dev->vfe_base,
 				stream_info->wm[j], 0);
 	}
 }
