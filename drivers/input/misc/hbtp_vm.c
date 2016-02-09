@@ -156,13 +156,13 @@ static int hbtp_vm_report_clicks(struct hbtp_virtual_mouse *hbtp_data,
 static long hbtp_vm_ioctl(struct file *file, unsigned int cmd,
 			unsigned long arg)
 {
-	int error;
+	int error = 0;
 	struct hbtp_input_mt mt_data;
 	struct hbtp_vm_click clik_data;
 
 	if (!hbtp_vm) {
 		pr_err("%s: virtual mouse driver not initialized\n",
-					__func__);
+			__func__);
 		return -ENOMEM;
 	}
 
@@ -196,7 +196,7 @@ static long hbtp_vm_ioctl(struct file *file, unsigned int cmd,
 	case HBTP_VM_SET_TOUCHDATA:
 		if (!hbtp_vm->input_dev) {
 			pr_err("%s: virtual mouse input device hasn't been created\n",
-					__func__);
+				__func__);
 			return -EFAULT;
 		}
 
@@ -213,12 +213,12 @@ static long hbtp_vm_ioctl(struct file *file, unsigned int cmd,
 	case HBTP_VM_SEND_CLICK:
 		if (!hbtp_vm->input_dev) {
 			pr_err("%s: virtual mouse input device hasn't been created\n",
-						__func__);
+				__func__);
 			return -EFAULT;
 		}
 
 		if (copy_from_user(&clik_data, (void *)arg,
-		    sizeof(struct hbtp_vm_click))) {
+			sizeof(struct hbtp_vm_click))) {
 			pr_err("%s: Error copying data\n", __func__);
 			return -EFAULT;
 		}
