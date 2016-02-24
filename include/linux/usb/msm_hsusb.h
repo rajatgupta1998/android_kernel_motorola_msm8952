@@ -604,6 +604,7 @@ struct msm_otg {
 	char (buf[DEBUG_MAX_MSG])[DEBUG_MSG_LEN];   /* buffer */
 	u32 max_nominal_system_clk_rate;
 	unsigned int vbus_state;
+	int falsesdp_retry_count;
 	unsigned int usb_irq_count;
 	int pm_qos_latency;
 	struct pm_qos_request pm_qos_req_dma;
