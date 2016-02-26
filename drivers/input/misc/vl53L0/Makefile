@@ -20,4 +20,4 @@ ccflags-$(CONFIG_MSMB_CAMERA_2016) += -Idrivers/media/platform/msm/camera_v2_201
 ccflags-$(CONFIG_MSMB_CAMERA_2016) += -Idrivers/media/platform/msm/camera_v2_2016/sensor/cci
 
 obj-$(CONFIG_STMVL53L0)			+= stmvl53l0.o
-stmvl53l0-objs				:= stmvl53l0_module.o stmvl53l0_module-i2c.o stmvl53l0_module-cci.o src/vl53l0_api.o src/vl53l010_api.o src/vl53l010_tuning.o  src/vl53l0_tuning.o src/vl53l0_platform.o src/vl53l0_i2c_platform.o src/vl53l0_port_i2c.o
+stmvl53l0-objs				:= stmvl53l0_module.o stmvl53l0_module-i2c.o stmvl53l0_module-cci.o src/vl53l0_api_calibration.o src/vl53l0_api_core.o src/vl53l0_api_histogram.o src/vl53l0_api_ranging.o src/vl53l0_api_strings.o src/vl53l0_api.o src/vl53l0_platform.o src/vl53l0_i2c_platform.o src/vl53l0_port_i2c.o src/vl53l010_api.o src/vl53l010_tuning.o
