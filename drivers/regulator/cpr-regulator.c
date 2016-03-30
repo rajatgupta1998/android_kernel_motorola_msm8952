@@ -1296,6 +1296,8 @@ _exit:
 	val = (cpr_vreg->ref_clk_khz * cpr_vreg->timer_delay_us) / 1000;
 	cpr_write(cpr_vreg, REG_RBCPR_TIMER_INTERVAL, val);
 
+	kfree(quot_delta_results);
+
 	return rc;
 }
 
@@ -3804,8 +3806,8 @@ static int cpr_aging_init(struct platform_device *pdev,
 			i, cpr_vreg->cpr_fuse_target_quot[i]);
 	}
 
-err:
 	kfree(fuse_sel_orig);
+err:
 	kfree(aging_sensor_id);
 	return rc;
 }
