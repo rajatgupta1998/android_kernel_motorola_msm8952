@@ -895,6 +895,7 @@ static int cmdq_halt(struct mmc_host *mmc, bool halt)
 	u32 val;
 	u32 config = 0;
 	int retries = 3;
+	unsigned long flags;
 
 	if (halt) {
 		while (retries) {
@@ -930,6 +931,8 @@ static int cmdq_halt(struct mmc_host *mmc, bool halt)
 		}
 		return retries ? 0 : -ETIMEDOUT;
 	} else {
+
+		local_irq_save(flags);
 		if (cq_host->ops->set_transfer_params)
 			cq_host->ops->set_transfer_params(mmc);
 		if (cq_host->ops->set_block_size)
@@ -938,8 +941,11 @@ static int cmdq_halt(struct mmc_host *mmc, bool halt)
 			cq_host->ops->set_data_timeout(mmc, 0xf);
 		if (cq_host->ops->clear_set_irqs)
 			cq_host->ops->clear_set_irqs(mmc, true);
+		/* clear the halt flag before we enable cmdq */
+		mmc_host_clr_halt(mmc);
 		cmdq_writel(cq_host, cmdq_readl(cq_host, CQCTL) & ~HALT,
 			    CQCTL);
+		local_irq_restore(flags);
 	}
 
 	return 0;
