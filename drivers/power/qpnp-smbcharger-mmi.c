@@ -7816,9 +7816,11 @@ static int smbchg_probe(struct spmi_device *spmi)
 			rc = PTR_ERR(vadc_dev);
 			if (rc != -EPROBE_DEFER)
 				dev_err(&spmi->dev, "Couldn't get vadc rc=%d\n",
-						rc);
+					rc);
 			return rc;
 		}
+	} else {
+		vadc_dev = NULL;
 	}
 
 	chip = devm_kzalloc(&spmi->dev, sizeof(*chip), GFP_KERNEL);
