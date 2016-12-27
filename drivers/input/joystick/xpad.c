@@ -1117,6 +1117,11 @@ static int xpad_init_input(struct usb_xpad *xpad)
 	usb_to_input_id(xpad->udev, &input_dev->id);
 	input_dev->dev.parent = &xpad->intf->dev;
 
+	if (xpad->xtype == XTYPE_XBOX360W) {
+		/* x360w controllers and the receiver have different ids */
+		input_dev->id.product = 0x02a1;
+	}
+
 	input_set_drvdata(input_dev, xpad);
 
 	input_dev->open = xpad_open;
