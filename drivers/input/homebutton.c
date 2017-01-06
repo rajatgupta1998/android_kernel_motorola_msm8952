@@ -19,22 +19,31 @@ struct homebutton_data {
 	bool key_down;
 	bool scr_suspended;
 	bool enable;
+	bool enable_wakeup;
 	int vib_strength;
 	unsigned int key;
 } hb_data = {
 	.vib_strength = VIB_STRENGTH,
 	.enable = true,
+	.enable_wakeup = true,
 	.key = KEY_HOME
 };
 
-static void hb_input_callback(struct work_struct *unused) {
+static void hb_input_callback(struct work_struct *unused)
+{
 	if (!mutex_trylock(&hb_lock))
 		return;
 
 	if (hb_data.key_down)
 		set_vibrate(hb_data.vib_strength);
 
-	input_report_key(hb_data.hb_dev, hb_data.key, hb_data.key_down);
+	if (hb_data.scr_suspended && hb_data.enable_wakeup) {
+	    input_event(hb_data.hb_dev, EV_KEY, KEY_POWER, hb_data.key_down);
+	}
+	else if (hb_data.enable && !hb_data.scr_suspended) {
+		input_event(hb_data.hb_dev, EV_KEY, KEY_HOME, hb_data.key_down);
+	}
+
 	input_sync(hb_data.hb_dev);
 
 	mutex_unlock(&hb_lock);
@@ -42,7 +51,8 @@ static void hb_input_callback(struct work_struct *unused) {
 	return;
 }
 
-static int input_dev_filter(struct input_dev *dev) {
+static int input_dev_filter(struct input_dev *dev)
+{
 	if (strstr(dev->name, "fpc1020")) {
 		return 0;
 	} else {
@@ -51,7 +61,8 @@ static int input_dev_filter(struct input_dev *dev) {
 }
 
 static int hb_input_connect(struct input_handler *handler,
-				struct input_dev *dev, const struct input_device_id *id) {
+			    struct input_dev *dev, const struct input_device_id *id)
+{
 	int rc;
 	struct input_handle *handle;
 
@@ -84,12 +95,9 @@ err_input_register_handle:
 }
 
 static bool hb_input_filter(struct input_handle *handle, unsigned int type, 
-						unsigned int code, int value)
+			    unsigned int code, int value)
 {
 	if (type != EV_KEY)
-		return false;
-
-	if (!hb_data.enable || hb_data.scr_suspended)
 		return false;
 
 	if (value == 1) {
@@ -177,6 +185,33 @@ static ssize_t hb_enable_store(struct device *dev,
 static DEVICE_ATTR(enable, (S_IWUSR | S_IRUGO),
 	hb_enable_show, hb_enable_store);
 
+static ssize_t hb_enable_wakeup_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", hb_data.enable_wakeup);
+}
+
+static ssize_t hb_enable_wakeup_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int rc;
+	unsigned long input;
+
+	rc = kstrtoul(buf, 0, &input);
+	if (rc < 0)
+		return -EINVAL;
+
+	if (input < 0 || input > 1)
+		input = 0;
+
+	hb_data.enable_wakeup = input;
+
+	return count;
+}
+
+static DEVICE_ATTR(enable_wakeup, (S_IWUSR | S_IRUGO),
+	hb_enable_wakeup_show, hb_enable_wakeup_store);
+
 static ssize_t vib_strength_show(struct device *dev,
 		 struct device_attribute *attr, char *buf)
 {
@@ -239,9 +274,9 @@ static int __init hb_init(void)
 		goto err_alloc_dev;
 	}
 
+	input_set_capability(hb_data.hb_dev, EV_KEY, KEY_POWER);
 	input_set_capability(hb_data.hb_dev, EV_KEY, KEY_HOME);
 	set_bit(EV_KEY, hb_data.hb_dev->evbit);
-	set_bit(KEY_HOME, hb_data.hb_dev->keybit);
 	hb_data.hb_dev->name = "qwerty";
 	hb_data.hb_dev->phys = "qwerty/input0";
 
@@ -276,6 +311,10 @@ static int __init hb_init(void)
 	rc = sysfs_create_file(hb_data.homebutton_kobj, &dev_attr_enable.attr);
 	if (rc)
 		pr_err("%s: sysfs_create_file failed for homebutton enable\n", __func__);
+
+	rc = sysfs_create_file(hb_data.homebutton_kobj, &dev_attr_enable_wakeup.attr);
+	if (rc)
+		pr_err("%s: sysfs_create_file failed for homebutton enable wakeup\n", __func__);
 
 	rc = sysfs_create_file(hb_data.homebutton_kobj, &dev_attr_vib_strength.attr);
 	if (rc)
