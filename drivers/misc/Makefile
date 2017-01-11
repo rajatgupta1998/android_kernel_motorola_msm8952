@@ -75,3 +75,4 @@ obj-$(CONFIG_MOT_UTAG) += utag/
 obj-$(CONFIG_SENSORS_STML0XX) += stml0xx/
 obj-$(CONFIG_DROPBOX) += dropbox.o
 obj-$(CONFIG_SEC_DRIVER) += sec/
+obj-$(CONFIG_UID_SYS_STATS) += uid_sys_stats.o
