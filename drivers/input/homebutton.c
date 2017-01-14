@@ -33,19 +33,14 @@ static void hb_input_callback(struct work_struct *unused) {
 	if (!mutex_trylock(&hb_lock))
 		return;
 
-	if (hb_data.key_down) {
+	if (hb_data.key_down)
 		set_vibrate(hb_data.vib_strength);
 
-		if (hb_data.scr_suspended && hb_data.enable_wakeup) {
-			input_report_key(hb_data.hb_dev, KEY_POWER, 1);
-			input_report_key(hb_data.hb_dev, KEY_POWER, 0);
-			hb_data.scr_suspended = false;
-		}
-		else if (hb_data.enable) {
-			pr_err("homebutton report HOME");
-			input_report_key(hb_data.hb_dev, hb_data.key, 1);
-			input_report_key(hb_data.hb_dev, hb_data.key, 0);
-		}
+	if (hb_data.scr_suspended && hb_data.enable_wakeup) {
+		input_event(hb_data.hb_dev, EV_KEY, KEY_POWER, hb_data.key_down);
+	}
+		else if (hb_data.enable && !hb_data.scr_suspended) {
+		input_event(hb_data.hb_dev, EV_KEY, KEY_HOME, hb_data.key_down);
 	}
 
 	input_sync(hb_data.hb_dev);
@@ -276,10 +271,9 @@ static int __init hb_init(void)
 		goto err_alloc_dev;
 	}
 
-        input_set_capability(hb_data.hb_dev, EV_KEY, KEY_POWER);
+    input_set_capability(hb_data.hb_dev, EV_KEY, KEY_POWER);
 	input_set_capability(hb_data.hb_dev, EV_KEY, KEY_HOME);
 	set_bit(EV_KEY, hb_data.hb_dev->evbit);
-	set_bit(KEY_HOME, hb_data.hb_dev->keybit);
 	hb_data.hb_dev->name = "qwerty";
 	hb_data.hb_dev->phys = "qwerty/input0";
 
