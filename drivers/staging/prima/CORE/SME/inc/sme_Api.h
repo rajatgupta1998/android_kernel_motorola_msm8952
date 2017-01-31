@@ -2598,16 +2598,6 @@ eHalStatus sme_8023MulticastList(tHalHandle hHal, tANI_U8 sessionId, tpSirRcvFlt
 eHalStatus sme_ReceiveFilterSetFilter(tHalHandle hHal, tpSirRcvPktFilterCfgType pRcvPktFilterCfg,
                                            tANI_U8 sessionId);
 
-// IKJB42MAIN-1244, Motorola, a19091 -- BEGIN
-/* ---------------------------------------------------------------------------
-    \fn sme_ReceiveSetMcFilter
-    \brief  API to set Receive Packet Filter from ISR context
-    \param  tSirInvokeV6Filter - Receive Packet Filter callback param
-    \return eHalStatus
-  ---------------------------------------------------------------------------*/
-eHalStatus sme_ReceiveSetMcFilter(tSirInvokeV6Filter *filterConfig);
-// IKJB42MAIN-1244, Motorola, a19091 -- END
-
 /* ---------------------------------------------------------------------------
     \fn sme_GetFilterMatchCount
     \brief  API to get D0 PC Filter Match Count
@@ -3970,4 +3960,5 @@ eHalStatus sme_remove_bssid_from_scan_list(tHalHandle hal,
 	tSirMacAddr bssid);
 void sme_set_mgmt_frm_via_wq5(tHalHandle hHal,
         tANI_BOOLEAN sendMgmtPktViaWQ5);
+eHalStatus sme_update_cfg_int_param(tHalHandle hHal, tANI_U32 cfg_id);
 #endif //#if !defined( __SME_API_H )
