@@ -40,7 +40,7 @@ static void hb_input_callback(struct work_struct *unused) {
 		input_event(hb_data.hb_dev, EV_KEY, KEY_POWER, hb_data.key_down);
 	}
 		else if (hb_data.enable && !hb_data.scr_suspended) {
-		input_event(hb_data.hb_dev, EV_KEY, KEY_HOME, hb_data.key_down);
+		input_event(hb_data.hb_dev, EV_KEY, hb_data.key, hb_data.key_down);
 	}
 
 	input_sync(hb_data.hb_dev);
