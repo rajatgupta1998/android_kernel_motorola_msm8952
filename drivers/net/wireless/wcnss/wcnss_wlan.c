@@ -37,6 +37,7 @@
 #include <linux/qpnp/qpnp-adc.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/pm_qos.h>
+#include <linux/vmalloc.h>
 
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/subsystem_notif.h>
@@ -400,7 +401,7 @@ static struct {
 	int	user_cal_read;
 	int	user_cal_available;
 	u32	user_cal_rcvd;
-	u32	user_cal_exp_size;
+	int	user_cal_exp_size;
 	int	iris_xo_mode_set;
 	int	fw_vbatt_state;
 	char	wlan_nv_macAddr[WLAN_MAC_ADDR_SIZE];
@@ -3502,8 +3503,7 @@ wcnss_wlan_probe(struct platform_device *pdev)
 	penv->pdev = pdev;
 	penv->wcnss_nv_name[0] = 0;
 
-	penv->user_cal_data =
-		devm_kzalloc(&pdev->dev, MAX_CALIBRATED_DATA_SIZE, GFP_KERNEL);
+	penv->user_cal_data = vmalloc(MAX_CALIBRATED_DATA_SIZE);
 	if (!penv->user_cal_data) {
 		dev_err(&pdev->dev, "Failed to alloc memory for cal data.\n");
 		return -ENOMEM;
@@ -3556,6 +3556,7 @@ wcnss_wlan_remove(struct platform_device *pdev)
 	if (penv->wcnss_notif_hdle)
 		subsys_notif_unregister_notifier(penv->wcnss_notif_hdle, &wnb);
 	wcnss_remove_sysfs(&pdev->dev);
+	vfree(penv->user_cal_data);
 	penv = NULL;
 	return 0;
 }
