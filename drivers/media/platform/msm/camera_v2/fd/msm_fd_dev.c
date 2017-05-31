@@ -671,9 +671,9 @@ static int msm_fd_reqbufs(struct file *file,
 	int ret;
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
 
-	mutex_lock(&ctx->lock);
+	mutex_lock(&ctx->fd_device->recovery_lock);
 	ret = vb2_reqbufs(&ctx->vb2_q, req);
-	mutex_unlock(&ctx->lock);
+	mutex_unlock(&ctx->fd_device->recovery_lock);
 	return ret;
 }
 
@@ -688,10 +688,9 @@ static int msm_fd_qbuf(struct file *file, void *fh,
 {
 	int ret;
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
-
-	mutex_lock(&ctx->lock);
+	mutex_lock(&ctx->fd_device->recovery_lock);
 	ret = vb2_qbuf(&ctx->vb2_q, pb);
-	mutex_unlock(&ctx->lock);
+	mutex_unlock(&ctx->fd_device->recovery_lock);
 	return ret;
 
 }
@@ -707,10 +706,9 @@ static int msm_fd_dqbuf(struct file *file,
 {
 	int ret;
 	struct fd_ctx *ctx = msm_fd_ctx_from_fh(fh);
-
-	mutex_lock(&ctx->lock);
+	mutex_lock(&ctx->fd_device->recovery_lock);
 	ret = vb2_dqbuf(&ctx->vb2_q, pb, file->f_flags & O_NONBLOCK);
-	mutex_unlock(&ctx->lock);
+	mutex_unlock(&ctx->fd_device->recovery_lock);
 	return ret;
 }
 
