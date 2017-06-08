@@ -20,19 +20,19 @@
 
 #include "power.h"
 
-static bool enable_qcom_rx_wakelock_ws = true;
+static bool enable_qcom_rx_wakelock_ws = false;
 module_param(enable_qcom_rx_wakelock_ws, bool, 0644);
-static bool enable_wlan_extscan_wl_ws = true;
+static bool enable_wlan_extscan_wl_ws = false;
 module_param(enable_wlan_extscan_wl_ws, bool, 0644);
-static bool enable_ipa_ws = true;
+static bool enable_ipa_ws = false;
 module_param(enable_ipa_ws, bool, 0644);
-static bool enable_wlan_ws = true;
+static bool enable_wlan_ws = false;
 module_param(enable_wlan_ws, bool, 0644);
-static bool enable_timerfd_ws = true;
+static bool enable_timerfd_ws = false;
 module_param(enable_timerfd_ws, bool, 0644);
-static bool enable_netlink_ws = true;
+static bool enable_netlink_ws = false;
 module_param(enable_netlink_ws, bool, 0644);
-static bool enable_netmgr_wl_ws = true;
+static bool enable_netmgr_wl_ws = false;
 module_param(enable_netmgr_wl_ws, bool, 0644);
 
 /*
