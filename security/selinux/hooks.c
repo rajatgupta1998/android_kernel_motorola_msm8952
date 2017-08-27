@@ -436,7 +436,6 @@ static int sb_finish_set_opts(struct super_block *sb)
 	    !strcmp(sb->s_type->name, "pstore") ||
 	    !strcmp(sb->s_type->name, "debugfs") ||
 	    !strcmp(sb->s_type->name, "rootfs"))
-	    !strcmp(sb->s_type->name, "tracefs") ||
 		sbsec->flags |= SE_SBLABELSUPP;
 
 	/*
