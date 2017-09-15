@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -291,8 +291,8 @@ typedef struct tagCsrScanRequest
     tCsrChannelInfo ChannelInfo;
     tANI_U32 minChnTime;    //in units of milliseconds
     tANI_U32 maxChnTime;    //in units of milliseconds
-    tANI_U32 minChnTimeBtc;    //in units of milliseconds
-    tANI_U32 maxChnTimeBtc;    //in units of milliseconds
+    tANI_U32 min_chntime_btc_esco;    //in units of milliseconds
+    tANI_U32 max_chntime_btc_esco;    //in units of milliseconds
     tANI_U32 restTime;      //in units of milliseconds  //ignored when not connected
     tANI_U32 uIEFieldLen;
     tANI_U8 *pIEField;
@@ -309,8 +309,8 @@ typedef struct tagCsrBGScanRequest
     tANI_U32 scanInterval;  //in units of milliseconds
     tANI_U32 minChnTime;    //in units of milliseconds
     tANI_U32 maxChnTime;    //in units of milliseconds
-    tANI_U32 minChnTimeBtc;    //in units of milliseconds
-    tANI_U32 maxChnTimeBtc;    //in units of milliseconds
+    tANI_U32 min_chntime_btc_esco;    //in units of milliseconds
+    tANI_U32 max_chntime_btc_esco;    //in units of milliseconds
     tANI_U32 restTime;      //in units of milliseconds  //ignored when not connected
     tANI_U32 throughputImpact;      //specify whether BG scan cares about impacting throughput  //ignored when not connected
     tCsrBssid bssid;    //how to use it?? Apple
@@ -405,6 +405,7 @@ typedef struct tagCsrScanResultFilter
 #ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
     tANI_BOOLEAN isPERRoamScan;
 #endif
+    tCsrBssid bssid_hint;
 }tCsrScanResultFilter;
 
 
@@ -665,8 +666,6 @@ typedef enum
     eCSR_ASSOC_STATE_TYPE_INFRA_DISCONNECTED,
     // Participating in a Infra network and connected to a peer
     eCSR_ASSOC_STATE_TYPE_INFRA_CONNECTED,
-    /* Disconnecting with AP or stop connecting process */
-    eCSR_ASSOC_STATE_TYPE_INFRA_DISCONNECTING,
 
 }eCsrConnectState;
 
@@ -958,7 +957,7 @@ typedef struct tagCsrRoamProfile
     tCsrMobilityDomainInfo MDID;
 #endif
     tVOS_CON_MODE csrPersona;
-
+    tCsrBssid bssid_hint;
 }tCsrRoamProfile;
 
 
@@ -1032,6 +1031,7 @@ typedef struct tagCsrNeighborRoamConfigParams
     tANI_U16       nNeighborResultsRefreshPeriod;
     tANI_U16       nEmptyScanRefreshPeriod;
     tANI_U8        nNeighborInitialForcedRoamTo5GhEnable;
+    tANI_U8        nWeakZoneRssiThresholdForRoam;
 }tCsrNeighborRoamConfigParams;
 #endif
 
@@ -1097,8 +1097,10 @@ typedef struct tagCsrConfigParam
 
     tANI_U32  nInitialDwellTime;      //in units of milliseconds
 
-    tANI_U32  nActiveMinChnTimeBtc;     //in units of milliseconds
-    tANI_U32  nActiveMaxChnTimeBtc;     //in units of milliseconds
+    uint32_t  min_chntime_btc_esco;     //in units of milliseconds
+    uint32_t  max_chntime_btc_esco;     //in units of milliseconds
+    uint32_t  min_chntime_btc_sco;
+    uint32_t  max_chntime_btc_sco;
     tANI_U32  disableAggWithBtc;
 #ifdef WLAN_AP_STA_CONCURRENCY
     tANI_U32  nPassiveMinChnTimeConc;    //in units of milliseconds
@@ -1189,12 +1191,18 @@ typedef struct tagCsrConfigParam
     v_BOOL_t isPERRoamEnabled;
     v_BOOL_t isPERRoamCCAEnabled;
     v_S15_t PERRoamFullScanThreshold;
+    v_S15_t PERMinRssiThresholdForRoam;
     v_U32_t rateUpThreshold;
     v_U32_t rateDownThreshold;
     v_U32_t waitPeriodForNextPERScan;
     v_U32_t PERtimerThreshold;
     v_U32_t PERroamTriggerPercent;
 #endif
+
+#ifdef WLAN_FEATURE_LFR_MBB
+    tANI_BOOLEAN enable_lfr_mbb;
+#endif
+
 #endif
 
     tANI_BOOLEAN ignorePeerErpInfo;
@@ -1234,6 +1242,8 @@ typedef struct tagCsrConfigParam
     uint32_t edca_vi_aifs;
     uint32_t edca_bk_aifs;
     uint32_t edca_be_aifs;
+    tANI_BOOLEAN disable_scan_during_sco;
+    uint32_t sta_auth_retries_for_code17;
 }tCsrConfigParam;
 
 //Tush
@@ -1325,6 +1335,12 @@ typedef struct tagCsrRoamInfo
 #ifdef WLAN_FEATURE_AP_HT40_24G
     tpSirHT2040CoexInfoInd pSmeHT2040CoexInfoInd;
 #endif
+    tDot11fIEHTCaps ht_caps;
+    tDot11fIEVHTCaps vht_caps;
+    tDot11fIEhs20vendor_ie hs20vendor_ie;
+    tDot11fIEVHTOperation vht_operation;
+    tDot11fIEHTInfo ht_operation;
+    bool reassoc;
 }tCsrRoamInfo;
 
 typedef struct tagCsrFreqScanInfo
@@ -1549,6 +1565,18 @@ struct tagCsrDelStaParams
     u8 subtype;
 };
 
+
+/**
+ * struct csr_set_tx_max_pwr_per_band - Req params to
+ * set max tx power per band
+ * @band: band for which power to be set
+ * @power: power to set in dB
+ */
+struct csr_set_tx_max_pwr_per_band {
+    eCsrBand band;
+    tPowerdBm power;
+};
+
 ////////////////////////////////////////////Common SCAN starts
 
 //void *p2 -- the second context pass in for the caller
@@ -1748,7 +1776,6 @@ eHalStatus csrSetBand(tHalHandle hHal, eCsrBand eBand);
 
 ---------------------------------------------------------------------------*/
 eCsrBand csrGetCurrentBand (tHalHandle hHal);
-
 
 #endif
 

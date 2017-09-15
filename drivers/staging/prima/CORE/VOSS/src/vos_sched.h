@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -365,6 +365,8 @@ typedef struct _VosContextType
    struct list_head wdthread_timer_work_list;
    struct work_struct wdthread_work;
    spinlock_t wdthread_work_lock;
+   bool snoc_high_freq_voting;
+   spinlock_t freq_voting_lock;
 } VosContextType, *pVosContextType;
 
 
@@ -376,6 +378,8 @@ typedef struct _VosContextType
 int vos_sched_is_tx_thread(int threadID);
 int vos_sched_is_rx_thread(int threadID);
 int vos_sched_is_mc_thread(int threadID);
+void vos_thread_stuck_timer_init(pVosWatchdogContext pWdContext);
+
 /*---------------------------------------------------------------------------
   
   \brief vos_sched_open() - initialize the vOSS Scheduler  
@@ -535,6 +539,6 @@ void vos_ssr_unprotect(const char *caller_func);
 void vos_wd_reset_thread_stuck_count(int threadId);
 bool vos_is_wd_thread(int threadId);
 void vos_dump_stack(uint8_t value);
-
+void vos_dump_thread_stacks(int threadId);
 
 #endif // #if !defined __VOSS_SCHED_H

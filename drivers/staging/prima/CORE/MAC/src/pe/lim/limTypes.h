@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, 2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -694,14 +694,16 @@ void limSendAddtsReqActionFrame(tpAniSirGlobal pMac, tSirMacAddr peerMacAddr,
 void limSendAddtsRspActionFrame(tpAniSirGlobal pMac, tSirMacAddr peerMacAddr,
                            tANI_U16 statusCode, tSirAddtsReqInfo *addts, tSirMacScheduleIE *pSchedule,tpPESession);
 
-void limSendAssocRspMgmtFrame(tpAniSirGlobal, tANI_U16, tANI_U16, tSirMacAddr, tANI_U8, tpDphHashNode pSta,tpPESession);
+void limSendAssocRspMgmtFrame(tpAniSirGlobal, tANI_U16, tANI_U16, tSirMacAddr,
+                              tANI_U8, tpDphHashNode pSta,tpPESession,
+                              assoc_rsp_tx_context *tx_complete_context);
 
 void limSendNullDataFrame(tpAniSirGlobal, tpDphHashNode);
 void limSendDisassocMgmtFrame(tpAniSirGlobal, tANI_U16, tSirMacAddr, tpPESession, tANI_BOOLEAN waitForAck);
 void limSendDeauthMgmtFrame(tpAniSirGlobal, tANI_U16, tSirMacAddr, tpPESession, tANI_BOOLEAN waitForAck);
 void limSendSmeDisassocDeauthNtf( tpAniSirGlobal pMac,
                                 eHalStatus status, tANI_U32 *pCtx );
-
+void limDoSendAuthMgmtFrame(tpAniSirGlobal, tpPESession);
 
 void limContinueChannelScan(tpAniSirGlobal);
 tSirResultCodes limMlmAddBss(tpAniSirGlobal, tLimMlmStartReq *,tpPESession psessionEntry);
@@ -1002,40 +1004,6 @@ limGetCurrentScanChannel(tpAniSirGlobal pMac)
     return (*(pChanNum + pMac->lim.gLimCurrentScanChannelId));
 } /*** end limGetCurrentScanChannel() ***/
 
-
-
-/**
- * limGetIElenFromBssDescription()
- *
- *FUNCTION:
- * This function is called in various places to get IE length
- * from tSirBssDescription structure
- * number being scanned.
- *
- *PARAMS:
- *
- *LOGIC:
- *
- *ASSUMPTIONS:
- * NA
- *
- *NOTE:
- * NA
- *
- * @param     pBssDescr
- * @return    Total IE length
- */
-
-static inline tANI_U16
-limGetIElenFromBssDescription(tpSirBssDescription pBssDescr)
-{
-    if (!pBssDescr)
-        return 0;
-
-    return ((tANI_U16) (pBssDescr->length + sizeof(tANI_U16) +
-                   sizeof(tANI_U32) - sizeof(tSirBssDescription)));
-} /*** end limGetIElenFromBssDescription() ***/
-
 /**
  * limSendBeaconInd()
  *
@@ -1106,5 +1074,15 @@ tSirRetStatus limProcessSmeSetTdls2040BSSCoexReq(tpAniSirGlobal pMac,
                                                  tANI_U32 *pMsgBuf);
 tSirRetStatus limProcessSmeDelAllTdlsPeers(tpAniSirGlobal pMac,
                                            tANI_U32 *pMsgBuf);
+
+tSirRetStatus lim_process_sme_cap_tsf_req(tpAniSirGlobal pMac,
+                                          tANI_U32 *pMsgBuf);
+
+tSirRetStatus lim_process_sme_get_tsf_req(tpAniSirGlobal pMac,
+                                          tANI_U32 *pMsgBuf);
+
+tSirRetStatus lim_process_sme_del_ba_ses_req(tpAniSirGlobal pMac,
+                                             tANI_U32 *pMsgBuf);
+
 #endif /* __LIM_TYPES_H */
 

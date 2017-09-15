@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -602,10 +602,6 @@ static void WDTS_RxPacketDump(vos_pkt_t *pFrame,
                               WDI_DS_RxMetaInfoType *pRxMetadata)
 {
     tpSirMacMgmtHdr pHdr;
-    struct sk_buff *skb = NULL;
-    uint8_t proto_type;
-    uint8_t flag = 0x0F;
-    wpt_status status;
 
     if (NULL == pRxMetadata) {
         VOS_TRACE(VOS_MODULE_ID_WDI, VOS_TRACE_LEVEL_ERROR,
@@ -632,35 +628,18 @@ static void WDTS_RxPacketDump(vos_pkt_t *pFrame,
                  "%s: Management subtype:%d SA:"MAC_ADDRESS_STR" DA:"
                  MAC_ADDRESS_STR, __func__, pRxMetadata->subtype,
                  MAC_ADDR_ARRAY(pHdr->sa), MAC_ADDR_ARRAY(pHdr->da));
+        vos_set_rx_wow_dump(false);
     } else if (WDI_MAC_CTRL_FRAME == pRxMetadata->type) {
         VOS_TRACE(VOS_MODULE_ID_WDI, VOS_TRACE_LEVEL_ERROR,
                   "%s: Control subtype:%d SA:"MAC_ADDRESS_STR" DA:"
                   MAC_ADDRESS_STR, __func__, pRxMetadata->subtype,
                   MAC_ADDR_ARRAY(pHdr->sa), MAC_ADDR_ARRAY(pHdr->da));
+        vos_set_rx_wow_dump(false);
     } else if (WDI_MAC_DATA_FRAME == pRxMetadata->type) {
         VOS_TRACE(VOS_MODULE_ID_WDI, VOS_TRACE_LEVEL_ERROR,
                   "%s: Data subtype:%d SA:"MAC_ADDRESS_STR" DA:"
                   MAC_ADDRESS_STR, __func__, pRxMetadata->subtype,
                   MAC_ADDR_ARRAY(pHdr->sa), MAC_ADDR_ARRAY(pHdr->da));
-
-        status = vos_pkt_get_os_packet(pFrame, (v_VOID_t **)&skb, 0);
-        if (eWLAN_PAL_STATUS_SUCCESS != status) {
-            VOS_TRACE(VOS_MODULE_ID_WDI, VOS_TRACE_LEVEL_ERROR,
-                      "%s: Failure extracting skb from vos pkt", __func__);
-            return;
-        }
-
-        proto_type = vos_pkt_get_proto_type(skb, flag);
-        if (VOS_PKT_PROTO_TYPE_EAPOL & proto_type)
-           VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-                     "%s: RX frame is EAPOL", __func__);
-        else if (VOS_PKT_PROTO_TYPE_DHCP & proto_type)
-           VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-                     "%s: RX frame is DHCP", __func__);
-        else if (VOS_PKT_PROTO_TYPE_ARP & proto_type)
-           VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-                     "%s: RX frame is ARP", __func__);
-
     } else
         VOS_TRACE(VOS_MODULE_ID_WDI, VOS_TRACE_LEVEL_ERROR,
                   "%s: Unknown frame SA:"MAC_ADDRESS_STR,
@@ -689,6 +668,7 @@ wpt_status WDTS_RxPacket (void *pContext, wpt_packet *pFrame, WDTS_ChannelType c
   wpt_uint8                  isFcBd = 0;
   WDI_DS_LoggingSessionType *pLoggingSession;
   tPerPacketStats             rxStats = {0};
+  wpt_uint8 indType = 0;
 
   tpSirMacFrameCtl  pMacFrameCtl;
   // Do Sanity checks
@@ -745,6 +725,7 @@ wpt_status WDTS_RxPacket (void *pContext, wpt_packet *pFrame, WDTS_ChannelType c
   bFSF = WDI_RX_BD_GET_ESF(pBDHeader);
   bLSF = WDI_RX_BD_GET_LSF(pBDHeader);
   isFcBd = WDI_RX_FC_BD_GET_FC(pBDHeader);
+  indType = WDI_RX_BD_GET_PER_SAPOFFLOAD(pBDHeader);
 
   DTI_TRACE( DTI_TRACE_LEVEL_INFO,
       "WLAN TL:BD header processing data: HO %d DO %d Len %d HLen %d"
@@ -754,7 +735,6 @@ wpt_status WDTS_RxPacket (void *pContext, wpt_packet *pFrame, WDTS_ChannelType c
 
   pRxMetadata = WDI_DS_ExtractRxMetaData(pFrame);
 
-  // Special handling for frames which contain logging information
   if (WDTS_CHANNEL_RX_LOG == channel)
   {
       if (VPKT_SIZE_BUFFER_ALIGNED < (usMPDULen+ucMPDUHOffset))
@@ -789,10 +769,20 @@ wpt_status WDTS_RxPacket (void *pContext, wpt_packet *pFrame, WDTS_ChannelType c
       wpalPacketSetRxLength(pFrame, usMPDULen+ucMPDUHOffset);
       wpalPacketRawTrimHead(pFrame, ucMPDUHOffset);
 
-      // Invoke Rx complete callback
-      wpalLogPktSerialize(pFrame);
-
-      return eWLAN_PAL_STATUS_SUCCESS;
+      if(indType) {
+          DTI_TRACE(DTI_TRACE_LEVEL_INFO, "indtype is %d size of pacekt is %lu",
+                  indType, sizeof(WDI_RxBdType));
+         if (WDI_RXBD_SAP_TX_STATS == indType) {
+            pRxMetadata->fc = 1;
+            pClientData->receiveFrameCB(pClientData->pCallbackContext, pFrame);
+            return eWLAN_PAL_STATUS_SUCCESS;
+         }
+      }
+      else {
+          // Invoke Rx complete callback
+          wpalLogPktSerialize(pFrame);
+          return eWLAN_PAL_STATUS_SUCCESS;
+      }
   }
   else
   {
@@ -801,7 +791,9 @@ wpt_status WDTS_RxPacket (void *pContext, wpt_packet *pFrame, WDTS_ChannelType c
 
   if(!isFcBd)
   {
-      if(usMPDUDOffset <= ucMPDUHOffset || usMPDULen < ucMPDUHLen) {
+      /* When channel is WDTS_CHANNEL_RX_LOG firmware doesn't send MPDU header*/
+      if ((usMPDUDOffset <= ucMPDUHOffset || usMPDULen < ucMPDUHLen) &&
+              (WDTS_CHANNEL_RX_LOG != channel)) {
         DTI_TRACE( DTI_TRACE_LEVEL_ERROR,
             "WLAN TL:BD header corrupted - dropping packet");
         /* Drop packet ???? */ 
@@ -887,6 +879,30 @@ wpt_status WDTS_RxPacket (void *pContext, wpt_packet *pFrame, WDTS_ChannelType c
       pRxMetadata->roamCandidateInd = WDI_RX_BD_GET_ROAMCANDIDATEIND(pBDHeader);
       pRxMetadata->perRoamCndInd = WDI_RX_BD_GET_PER_ROAMCANDIDATEIND(pBDHeader);
 #endif
+#ifdef SAP_AUTH_OFFLOAD
+      /* Currently firmware use WDTS_CHANNEL_RX_LOG channel for two purpose.
+       * 1) For firmare logging information: driver will do special handling
+       * for those message.
+       * 2) When SAP offload is enabled: In this case, indication type is stored
+       * in pRxMetadata which will be used by LIM later.
+       */
+      if (WDTS_CHANNEL_RX_LOG == channel)
+      {
+          pRxMetadata->indType =
+              (wpt_uint32)WDI_RX_BD_GET_PER_SAPOFFLOAD(pBDHeader);
+          if (pRxMetadata->indType == WDI_RXBD_MLME_STA_STATUS)
+          {
+              DTI_TRACE( DTI_TRACE_LEVEL_INFO, "%s: Indtype is %d\n",
+                      __func__, pRxMetadata->indType);
+              pRxMetadata->type    = WDI_MAC_MGMT_FRAME;
+          }
+      }
+      else
+      {
+          pRxMetadata->indType = 0;
+      }
+#endif
+
 #ifdef WLAN_FEATURE_EXTSCAN
       pRxMetadata->extscanBuffer = WDI_RX_BD_GET_EXTSCANFULLSCANRESIND(pBDHeader);
 #endif
@@ -977,10 +993,8 @@ wpt_status WDTS_RxPacket (void *pContext, wpt_packet *pFrame, WDTS_ChannelType c
       }
 
       /* Dump first Rx packet after host wakeup */
-      if (vos_get_rx_wow_dump()) {
+      if (vos_get_rx_wow_dump())
           WDTS_RxPacketDump((vos_pkt_t*)pFrame, pRxMetadata);
-          vos_set_rx_wow_dump(false);
-      }
 
       /* Invoke Rx complete callback */
       pClientData->receiveFrameCB(pClientData->pCallbackContext, pFrame);
@@ -1282,6 +1296,13 @@ wpt_status WDTS_TxPacket(void *pContext, wpt_packet *pFrame)
 #else
       ((pTxMetadata->isEapol) ? WDTS_CHANNEL_TX_HIGH_PRI : WDTS_CHANNEL_TX_LOW_PRI) : WDTS_CHANNEL_TX_HIGH_PRI;
 #endif
+
+  if (pTxMetadata->isArp)
+  {
+    VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
+              "%s :Transmitting ARP packet", __func__);
+  }
+
   // Send packet to  Transport Driver. 
   status =  gTransportDriver.xmit(pDTDriverContext, pFrame, channel);
   if ((WLAN_LOG_LEVEL_ACTIVE ==

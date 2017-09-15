@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2015, 2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -473,10 +473,6 @@ limDeletePreAuthNode(tpAniSirGlobal pMac, tSirMacAddr macAddr)
 
 } /*** end limDeletePreAuthNode() ***/
 
-
-
-
-
 /**
  * limRestoreFromPreAuthState
  *
@@ -515,13 +511,6 @@ limRestoreFromAuthState(tpAniSirGlobal pMac, tSirResultCodes resultCode, tANI_U1
     
     /* Update PE session ID*/
     mlmAuthCnf.sessionId = sessionEntry->peSessionId;
-
-    /// Free up buffer allocated
-    /// for pMac->lim.gLimMlmAuthReq
-    vos_mem_free(pMac->lim.gpLimMlmAuthReq);
-    pMac->lim.gpLimMlmAuthReq = NULL;
-
-    sessionEntry->limMlmState = sessionEntry->limPrevMlmState;
     
     MTRACE(macTrace(pMac, TRACE_CODE_MLM_STATE, sessionEntry->peSessionId, sessionEntry->limMlmState));
     /* Set the authAckStatus status flag as sucess as
@@ -548,9 +537,25 @@ limRestoreFromAuthState(tpAniSirGlobal pMac, tSirResultCodes resultCode, tANI_U1
         pMac->lim.gLimPreAuthChannelNumber = 0;
     }
 
-    limPostSmeMessage(pMac,
+    if ((protStatusCode == eSIR_MAC_MAX_ASSOC_STA_REACHED_STATUS)
+             && (sessionEntry->sta_auth_retries_for_code17 <
+                            pMac->sta_auth_retries_for_code17)) {
+        limLog(pMac, LOG1, FL("Retry Auth "));
+        limDoSendAuthMgmtFrame(pMac, sessionEntry);
+        sessionEntry->sta_auth_retries_for_code17++;
+    } else {
+        /// Free up buffer allocated
+        /// for pMac->lim.gLimMlmAuthReq
+        vos_mem_free(pMac->lim.gpLimMlmAuthReq);
+        pMac->lim.gpLimMlmAuthReq = NULL;
+
+        sessionEntry->limMlmState = sessionEntry->limPrevMlmState;
+
+        limPostSmeMessage(pMac,
                       LIM_MLM_AUTH_CNF,
                       (tANI_U32 *) &mlmAuthCnf);
+        sessionEntry->sta_auth_retries_for_code17 = 0;
+    }
 } /*** end limRestoreFromAuthState() ***/
 
 
@@ -666,7 +671,7 @@ limEncryptAuthFrame(tpAniSirGlobal pMac, tANI_U8 keyId, tANI_U8 *pKey, tANI_U8 *
  */
 
 void
-limComputeCrc32(tANI_U8 *pDest, tANI_U8 * pSrc, tANI_U8 len)
+limComputeCrc32(tANI_U8 *pDest, tANI_U8 * pSrc, tANI_U16 len)
 {
     tANI_U32 crc;
     int i;
@@ -753,7 +758,7 @@ limRC4(tANI_U8 *pDest, tANI_U8 *pSrc, tANI_U8 *seed, tANI_U32 keyLength, tANI_U1
     {
         tANI_U8 i   = ctx.i;
         tANI_U8 j   = ctx.j;
-        tANI_U8 len = (tANI_U8) frameLen;
+        tANI_U16 len = frameLen;
 
         while (len-- > 0)
         {
@@ -835,7 +840,7 @@ limDecryptAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pKey, tANI_U8 *pEncrBody,
     // Compute CRC-32 and place them in last 4 bytes of encrypted body
     limComputeCrc32(icv,
                     (tANI_U8 *) pPlainBody,
-                    (tANI_U8) (frameLen - SIR_MAC_WEP_ICV_LENGTH));
+                    (frameLen - SIR_MAC_WEP_ICV_LENGTH));
 
     // Compare RX_ICV with computed ICV
     for (i = 0; i < SIR_MAC_WEP_ICV_LENGTH; i++)

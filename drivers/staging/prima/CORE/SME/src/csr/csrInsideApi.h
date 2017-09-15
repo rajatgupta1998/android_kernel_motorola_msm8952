@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -48,8 +48,11 @@
 #define CSR_ACTIVE_MAX_CHANNEL_TIME    40
 #define CSR_ACTIVE_MIN_CHANNEL_TIME    20
 
-#define CSR_ACTIVE_MAX_CHANNEL_TIME_BTC    120
-#define CSR_ACTIVE_MIN_CHANNEL_TIME_BTC    60
+#define CSR_ACTIVE_MAX_CHANNEL_TIME_ESCO_BTC    120
+#define CSR_ACTIVE_MIN_CHANNEL_TIME_ESCO_BTC    60
+
+#define CSR_ACTIVE_MIN_CHANNEL_TIME_SCO_BTC    20
+#define CSR_ACTIVE_MAX_CHANNEL_TIME_SCO_BTC    40
 
 #ifdef WLAN_AP_STA_CONCURRENCY
 #define CSR_PASSIVE_MAX_CHANNEL_TIME_CONC   110
@@ -111,6 +114,9 @@
 #define CSR_JOIN_MAX_RETRY_COUNT             10
 #define CSR_JOIN_RETRY_TIMEOUT_PERIOD        ( 1 *  PAL_TIMER_TO_SEC_UNIT )  // 1 second
 #endif
+
+#define CSR_DISABLE_SCAN_DURING_SCO          100 //100 milliseconds
+
 
 #ifdef WLAN_FEATURE_ROAM_SCAN_OFFLOAD
 #define ROAMING_RSSI_WEIGHT 50
@@ -220,8 +226,19 @@ typedef struct
     tListElem *pCurEntry;
 }tScanResultList;
 
-
-
+/**
+ * csr_scan_for_ssid_context() - Callback context for SSID scan
+ *
+ * @pMac: pMac handle
+ * @sessionId: scan session id
+ * @roamId: roam Id
+ */
+struct csr_scan_for_ssid_context
+{
+    tpAniSirGlobal pMac;
+    tANI_U32 sessionId;
+    tANI_U32 roamId;
+};
 
 #define CSR_IS_ROAM_REASON( pCmd, reason ) ( (reason) == (pCmd)->roamCmd.roamReason )
 #define CSR_IS_BETTER_PREFER_VALUE(v1, v2)   ((v1) > (v2))
@@ -240,13 +257,15 @@ typedef struct
                                       ( eCSR_ENCRYPT_TYPE_WEP40 != (encType) ) && \
                                       ( eCSR_ENCRYPT_TYPE_WEP104 != (encType) ) )
 
-#define CSR_IS_DISCONNECT_COMMAND(pCommand) ( ( eSmeCommandRoam == (pCommand)->command ) &&\
-                                              ( ( eCsrForcedDisassoc == (pCommand)->u.roamCmd.roamReason ) ||\
-                                                ( eCsrForcedDeauth == (pCommand)->u.roamCmd.roamReason ) ||\
-                                                ( eCsrSmeIssuedDisassocForHandoff ==\
-                                                                        (pCommand)->u.roamCmd.roamReason ) ||\
-                                                ( eCsrForcedDisassocMICFailure ==\
-                                                                          (pCommand)->u.roamCmd.roamReason ) ) )
+#define CSR_IS_DISCONNECT_COMMAND(pCommand) ((eSmeCommandRoam == \
+              (pCommand)->command) &&\
+        ((eCsrForcedDisassoc == (pCommand)->u.roamCmd.roamReason) ||\
+         (eCsrForcedIbssLeave == (pCommand)->u.roamCmd.roamReason) ||\
+         (eCsrForcedDeauth == (pCommand)->u.roamCmd.roamReason) ||\
+         (eCsrSmeIssuedDisassocForHandoff ==\
+             (pCommand)->u.roamCmd.roamReason) ||\
+         (eCsrForcedDisassocMICFailure ==\
+             (pCommand)->u.roamCmd.roamReason)))
 
 eCsrRoamState csrRoamStateChange( tpAniSirGlobal pMac, eCsrRoamState NewRoamState, tANI_U8 sessionId);
 eHalStatus csrScanningStateMsgProcessor( tpAniSirGlobal pMac, void *pMsgBuf );
@@ -254,6 +273,10 @@ void csrRoamingStateMsgProcessor( tpAniSirGlobal pMac, void *pMsgBuf );
 void csrRoamJoinedStateMsgProcessor( tpAniSirGlobal pMac, void *pMsgBuf );
 tANI_BOOLEAN csrScanComplete( tpAniSirGlobal pMac, tSirSmeScanRsp *pScanRsp );
 void csrReleaseCommandRoam(tpAniSirGlobal pMac, tSmeCmd *pCommand);
+tpCsrNeighborRoamBSSInfo csrNeighborRoamGetRoamableAPListNextEntry(tpAniSirGlobal pMac,
+                                        tDblLinkList *pList, tpCsrNeighborRoamBSSInfo pNeighborEntry);
+v_U8_t *csrNeighborRoamStateToString(v_U8_t state);
+void csrReleaseCommandPreauth(tpAniSirGlobal pMac, tSmeCmd *pCommand);
 void csrReleaseCommandScan(tpAniSirGlobal pMac, tSmeCmd *pCommand);
 void csrReleaseCommandWmStatusChange(tpAniSirGlobal pMac, tSmeCmd *pCommand);
 //pIes2 can be NULL
@@ -383,6 +406,10 @@ void csrRoamRemoveDuplicateCommand(tpAniSirGlobal pMac, tANI_U32 sessionId, tSme
 eHalStatus csrSendJoinReqMsg( tpAniSirGlobal pMac, tANI_U32 sessionId, tSirBssDescription *pBssDescription, 
                               tCsrRoamProfile *pProfile, tDot11fBeaconIEs *pIes, tANI_U16 messageType );
 eHalStatus csrSendMBDisassocReqMsg( tpAniSirGlobal pMac, tANI_U32 sessionId, tSirMacAddr bssId, tANI_U16 reasonCode );
+#ifdef WLAN_FEATURE_LFR_MBB
+eHalStatus csr_fill_reassoc_req(tpAniSirGlobal pMac, tANI_U32 sessionId, tSirBssDescription *pBssDescription,
+                                  tDot11fBeaconIEs *pIes, tSirSmeJoinReq **reassoc_req);
+#endif
 eHalStatus csrSendMBDeauthReqMsg( tpAniSirGlobal pMac, tANI_U32 sessionId, tSirMacAddr bssId, tANI_U16 reasonCode );
 eHalStatus csrSendMBDisassocCnfMsg( tpAniSirGlobal pMac, tpSirSmeDisassocInd pDisassocInd );
 eHalStatus csrSendMBDeauthCnfMsg( tpAniSirGlobal pMac, tpSirSmeDeauthInd pDeauthInd );
@@ -1089,5 +1116,7 @@ void csr_remove_bssid_from_scan_list(tpAniSirGlobal pMac,
 #ifdef WLAN_FEATURE_AP_HT40_24G
 eHalStatus csrSetHT2040Mode(tpAniSirGlobal pMac, tANI_U32 sessionId, tANI_U8 cbMode);
 #endif
+void csrValidateScanChannels(tpAniSirGlobal pMac, tCsrScanRequest *pDstReq,
+               tCsrScanRequest *pSrcReq, tANI_U32 *new_index, tANI_U8 ch144_support);
 #endif
 

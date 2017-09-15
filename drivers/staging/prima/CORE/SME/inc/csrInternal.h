@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -206,7 +206,7 @@ typedef enum
     eCsrLostLink1Abort,
     eCsrLostLink2Abort,
     eCsrLostLink3Abort,
-
+    ecsr_mbb_perform_preauth_reassoc,
 }eCsrRoamReason;
 
 typedef enum
@@ -520,6 +520,7 @@ typedef struct tagCsrNeighborRoamConfig
     tANI_U16       nNeighborResultsRefreshPeriod;
     tANI_U16       nEmptyScanRefreshPeriod;
     tANI_U8        nNeighborInitialForcedRoamTo5GhEnable;
+    tANI_U8        nWeakZoneRssiThresholdForRoam;
 }tCsrNeighborRoamConfig;
 #endif
 
@@ -587,8 +588,10 @@ typedef struct tagCsrConfig
 
     tANI_U32  nInitialDwellTime;     //in units of milliseconds
 
-    tANI_U32  nActiveMinChnTimeBtc;     //in units of milliseconds
-    tANI_U32  nActiveMaxChnTimeBtc;     //in units of milliseconds
+    uint32_t  min_chntime_btc_esco;     //in units of milliseconds
+    uint32_t  max_chntime_btc_esco;     //in units of milliseconds
+    uint32_t  min_chntime_btc_sco;
+    uint32_t  max_chntime_btc_sco;
     tANI_U8   disableAggWithBtc;
 #ifdef WLAN_AP_STA_CONCURRENCY
     tANI_U32  nPassiveMinChnTimeConc;    //in units of milliseconds
@@ -625,12 +628,17 @@ typedef struct tagCsrConfig
     v_BOOL_t     isPERRoamEnabled;
     v_BOOL_t     isPERRoamCCAEnabled;
     v_S15_t      PERRoamFullScanThreshold;
+    v_S15_t      PERMinRssiThresholdForRoam;
     tANI_U32     rateUpThreshold;
     tANI_U32     rateDownThreshold;
     tANI_U32     waitPeriodForNextPERScan;
     tANI_U32     PERtimerThreshold;
     tANI_U32     PERroamTriggerPercent;
 #endif
+#endif
+
+#ifdef WLAN_FEATURE_LFR_MBB
+    tANI_BOOLEAN enable_lfr_mbb;
 #endif
 
 #ifdef FEATURE_WLAN_ESE
@@ -739,6 +747,13 @@ typedef struct tagCsrVotes11d
     tANI_U8 countryCode[WNI_CFG_COUNTRY_CODE_LEN];
 }tCsrVotes11d;
 
+struct csr_disable_scan_during_sco_timer_info
+{
+    struct net_device *dev;
+    tANI_U32 scan_id;
+    csrScanCompleteCallback callback;
+};
+
 typedef struct tagCsrScanStruct
 {
     tScanProfile scanProfile;
@@ -748,6 +763,10 @@ typedef struct tagCsrScanStruct
     tANI_BOOLEAN fScanEnable;
     tANI_BOOLEAN fFullScanIssued;
     vos_timer_t hTimerGetResult;
+    vos_timer_t disable_scan_during_sco_timer;
+    struct csr_disable_scan_during_sco_timer_info
+                                 disable_scan_during_sco_timer_info;
+    tANI_BOOLEAN disable_scan_during_sco;
 #ifdef WLAN_AP_STA_CONCURRENCY
     vos_timer_t hTimerStaApConcTimer;
 #endif
@@ -1049,6 +1068,7 @@ typedef struct tagCsrRoamStruct
     tANI_BOOLEAN   isWESModeEnabled;
 #endif
     tANI_U32 deauthRspStatus;
+    tANI_BOOLEAN pending_roam_disable;
 }tCsrRoamStruct;
 
 
@@ -1480,3 +1500,18 @@ void csrDisableDfsChannel(tpAniSirGlobal pMac);
 eHalStatus csrEnableRMC(tpAniSirGlobal pMac, tANI_U32 sessionId);
 eHalStatus csrDisableRMC(tpAniSirGlobal pMac, tANI_U32 sessionId);
 #endif /* WLAN_FEATURE_RMC */
+
+eHalStatus csrRoamStopNetwork(tpAniSirGlobal pMac, tANI_U32 sessionId,
+    tCsrRoamProfile *pProfile, tSirBssDescription *pBssDesc,
+    tDot11fBeaconIEs *pIes);
+
+eHalStatus csrRoamSaveSecurityRspIE(tpAniSirGlobal pMac,
+    tANI_U32 sessionId, eCsrAuthType authType,
+    tSirBssDescription *pSirBssDesc,
+    tDot11fBeaconIEs *pIes);
+
+void csrRoamSubstateChange(tpAniSirGlobal pMac,
+    eCsrRoamSubState NewSubstate, tANI_U32 sessionId);
+
+eHalStatus csrRoamFreeConnectedInfo(tpAniSirGlobal pMac,
+   tCsrRoamConnectedInfo *pConnectedInfo);

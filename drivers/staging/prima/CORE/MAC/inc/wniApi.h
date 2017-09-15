@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, 2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, 2016-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -346,7 +346,6 @@ enum eWniMsgTypes
     //eWNI_SME_TDLS_DEL_STA_RSP = 175.
     //Should fix above issue to enable TDLS_INTERNAL
     eWNI_SME_SET_BCN_FILTER_REQ,
-    eWNI_SME_SET_V6_MC_FILTER, // IKJB42MAIN-1244, Motorola, a19091
     eWNI_SME_RESET_AP_CAPS_CHANGED,
 #ifdef WLAN_FEATURE_11W
     eWNI_SME_UNPROT_MGMT_FRM_IND,
@@ -388,6 +387,15 @@ enum eWniMsgTypes
     eWNI_SME_SET_TDLS_2040_BSSCOEX_REQ,
     eWNI_SME_DEL_ALL_TDLS_PEERS,
     eWNI_SME_REGISTER_MGMT_FRAME_CB,
+    eWNI_SME_CAP_TSF_REQ,
+    eWNI_SME_GET_TSF_REQ,
+
+#ifdef WLAN_FEATURE_LFR_MBB
+    eWNI_SME_MBB_PRE_AUTH_REASSOC_REQ,
+    eWNI_SME_MBB_PRE_AUTH_REASSOC_RSP,
+#endif
+
+    eWNI_SME_DEL_BA_SES_REQ,
     eWNI_SME_MSG_TYPES_END
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -41,10 +41,18 @@
 #ifndef __SIR_API_H
 #define __SIR_API_H
 
+/* Take care to avoid redefinition of this type, if it is */
+/* already defined in "halWmmApi.h" */
+#if !defined(_HALMAC_WMM_API_H)
+typedef struct sAniSirGlobal *tpAniSirGlobal;
+#endif
+
+
 #include "sirTypes.h"
 #include "sirMacProtDef.h"
 #include "aniSystemDefs.h"
 #include "sirParams.h"
+#include <dot11f.h>
 
 #if defined(FEATURE_WLAN_ESE) && !defined(FEATURE_WLAN_ESE_UPLOAD)
 #include "eseGlobal.h"
@@ -143,7 +151,6 @@ typedef tANI_U8 tSirVersionString[SIR_VERSION_STRING_LEN];
 #define WLAN_EXTSCAN_MAX_BUCKETS                  16
 #define WLAN_EXTSCAN_MAX_HOTLIST_APS              128
 #define WLAN_EXTSCAN_MAX_RSSI_SAMPLE_SIZE     8
-#define WLAN_EXTSCAN_MAX_HOTLIST_SSIDS            8
 #endif /* WLAN_FEATURE_EXTSCAN */
 
 #define WLAN_DISA_MAX_PAYLOAD_SIZE                1600
@@ -757,6 +764,13 @@ typedef struct sSirSmeStartBssRsp
     tSirBssDescription  bssDescription;//Peer BSS description
 } tSirSmeStartBssRsp, *tpSirSmeStartBssRsp;
 
+#ifdef WLAN_FEATURE_APFIND
+struct hal_apfind_request
+{
+    tANI_U16 request_data_len;
+    tANI_U8 request_data[];
+};
+#endif
 
 typedef struct sSirChannelList
 {
@@ -766,7 +780,7 @@ typedef struct sSirChannelList
 
 typedef struct sSirDFSChannelList
 {
-    tANI_U32         timeStamp[SIR_MAX_24G_5G_CHANNEL_RANGE];
+    v_TIME_t         timeStamp[SIR_MAX_24G_5G_CHANNEL_RANGE];
 
 } tSirDFSChannelList, *tpSirDFSChannelList;
 
@@ -857,8 +871,8 @@ typedef struct sSirSmeScanReq
      * Values of 0xC0, 0x80 & 0x40 are to be used by
      * Roaming/application when 11d is enabled.
      */
-    tANI_U32 minChannelTimeBtc;    //in units of milliseconds
-    tANI_U32 maxChannelTimeBtc;    //in units of milliseconds
+    tANI_U32 min_chntime_btc_esco;    //in units of milliseconds
+    tANI_U32 max_chntime_btc_esco;    //in units of milliseconds
     tANI_U8              returnAfterFirstMatch;
 
     /**
@@ -1149,6 +1163,12 @@ typedef struct sSirSmeJoinRsp
 
     /*to report MAX link-speed populate rate-flags from ASSOC RSP frame*/
     tANI_U32           maxRateFlags;
+
+    tDot11fIEHTCaps ht_caps;
+    tDot11fIEVHTCaps vht_caps;
+    tDot11fIEHTInfo ht_operation;
+    tDot11fIEVHTOperation vht_operation;
+    tDot11fIEhs20vendor_ie hs20vendor_ie;
 
     tANI_U8         frames[ 1 ];
 } tSirSmeJoinRsp, *tpSirSmeJoinRsp;
@@ -3703,6 +3723,8 @@ typedef enum DFSChanScanType
 #define SIR_COEX_IND_TYPE_CXM_FEATURES_NOTIFICATION (8)
 #define SIR_COEX_IND_TYPE_TDLS_ENABLE  (6)
 #define SIR_COEX_IND_TYPE_TDLS_DISABLE (7)
+#define SIR_COEX_IND_TYPE_HID_CONNECTED_WLAN_CONNECTED_IN_2p4 (9)
+#define SIR_COEX_IND_TYPE_HID_DISCONNECTED_WLAN_CONNECTED_IN_2p4 (10)
 
 typedef struct sSirSmeCoexInd
 {
@@ -3751,9 +3773,13 @@ typedef struct sSirNoAParam
     tANI_U8   psSelection;
 }tSirNoAParam, *tpSirNoAParam;
 
+typedef void(*wlan_suspend_req_cb)(void *ptr, VOS_STATUS status);
+
 typedef struct sSirWlanSuspendParam
 {
     tANI_U8 configuredMcstBcstFilterSetting;
+    wlan_suspend_req_cb wlan_sus_callback;
+    void *context;
 }tSirWlanSuspendParam,*tpSirWlanSuspendParam;
 
 typedef struct sSirWlanResumeParam
@@ -3766,6 +3792,12 @@ typedef struct sSirWlanSetRxpFilters
     tANI_U8 configuredMcstBcstFilterSetting;
     tANI_U8 setMcstBcstFilter;
 }tSirWlanSetRxpFilters,*tpSirWlanSetRxpFilters;
+
+
+typedef struct sSirUpdateCfgIntParam
+{
+    tANI_U32 cfgId;
+}tSirUpdateCfgIntParam,*tpSirUpdateCfgIntParam;
 
 typedef struct
 {
@@ -3783,9 +3815,62 @@ typedef struct
   tANI_U32 reserved2;
 }tAniLoggingInitRsp, *tpAniLoggingInitRsp;
 
+/**
+ * struct rsp_stats - arp packet stats
+ * @status: success or failure
+ * @tx_fw_cnt: tx packets count
+ * @tx_ack_cnt: tx acknowledgement count
+ */
+typedef struct {
+   uint32_t status;
+   uint16_t dad;
+   uint16_t tx_fw_cnt;
+   uint16_t tx_ack_cnt;
+   uint16_t rx_fw_cnt;
+} rsp_stats;
+
+typedef void(*setArpStatsReqCb)(void *data, VOS_STATUS rsp);
+
+/**
+ * struct setArpStatsParams - set/reset arp stats
+ * @flag: enable/disable stats
+ * @pkt_type: type of packet(1 - arp)
+ * @ip_addr: subnet ipv4 address in case of encrypted packets
+ * @rsp_cb_fn: FW response callback api
+ * @data_ctx: parameter for callback api
+ */
+typedef struct {
+   uint8_t flag;
+   uint8_t pkt_type;
+   uint32_t ip_addr;
+   setArpStatsReqCb rsp_cb_fn;
+   void *data_ctx;
+} setArpStatsParams, *psetArpStatsParams;
+
+typedef void(*getArpStatsReqCb)(void *data, rsp_stats *rsp);
+/**
+ * struct getArpStatsParams - get arp stats from firmware
+ * @pkt_type: packet type(1 - ARP)
+ * @get_rsp_cb_fn: FW response callback api
+ * @data_ctx: parameter for callback api
+ */
+typedef struct {
+   uint8_t pkt_type;
+   getArpStatsReqCb get_rsp_cb_fn;
+   void *data_ctx;
+} getArpStatsParams, *pgetArpStatsParams;
+
+
 typedef void(*FWLoggingInitReqCb)(void *fwlogInitCbContext, tAniLoggingInitRsp *pRsp);
 typedef void ( *tGetFrameLogCallback) (void *pContext);
 typedef void(*RssiMonitorReqCb)(void *rssiMonitorCbContext, VOS_STATUS status);
+typedef void(*pktFilterReqCb)(void *data, tANI_U32 status);
+typedef void(*dhcp_offload_req_cb)(void *rssiMonitorCbContext,
+                                   VOS_STATUS status);
+typedef void(*mdns_enable_req_cb)(void *mdns_enable_cb_context,
+                                  VOS_STATUS status);
+typedef void(*mdns_fqdn_req_cb)(void *mdns_fqdn_cb_context, VOS_STATUS status);
+typedef void(*mdns_resp_req_cb)(void *mdns_resp_cb_context, VOS_STATUS status);
 
 typedef struct sAniGetFrameLogReq
 {
@@ -4047,6 +4132,7 @@ typedef struct sSirRoamOffloadScanReq
   tANI_U8   p5GProbeTemplate[SIR_ROAM_SCAN_MAX_PB_REQ_SIZE];
   tANI_U8   nProbes;
   tANI_U16  HomeAwayTime;
+  tANI_U8     WeakZoneRssiThresholdForRoam;
   tSirRoamNetworkType ConnectedNetwork;
   tSirMobilityDomainInfo MDID;
 } tSirRoamOffloadScanReq, *tpSirRoamOffloadScanReq;
@@ -4198,14 +4284,6 @@ typedef struct sSirRcvPktFilterCfg
   tSirRcvPktFilterFieldParams     paramsData[SIR_MAX_NUM_TESTS_PER_FILTER];
 }tSirRcvPktFilterCfgType, *tpSirRcvPktFilterCfgType;
 
-// IKJB42MAIN-1244, Motorola, a19091 - BEGIN
-typedef struct sSirInvokeV6Filter
-{
-    int (*configureFilterFn)(void *pAdapter, v_U8_t set, v_U8_t userSet);
-    void *pHddAdapter;
-    v_U8_t set;
-}tSirInvokeV6Filter;
-// IKJB42MAIN-1244, Motorola, a19091 - END
 //
 // Filter Packet Match Count Parameters
 //
@@ -4235,6 +4313,8 @@ typedef struct sSirRcvFltPktClearParam
   tANI_U8    filterId;
   tSirMacAddr selfMacAddr;
   tSirMacAddr bssId;
+  pktFilterReqCb     pktFilterCallback;
+  void        *cbCtx;
 }tSirRcvFltPktClearParam, *tpSirRcvFltPktClearParam;
 
 //
@@ -5565,6 +5645,65 @@ typedef PACKED_PRE struct PACKED_POST
     tSirWifiScanResult   bssHotlist[1];
 } tSirEXTScanHotlistMatch, *tpSirEXTScanHotlistMatch;
 
+#ifdef DHCP_SERVER_OFFLOAD
+/**
+ * sir_dhcp_srv_offload_info_t - dhcp server offload info
+ * @bssidx: bss index
+ * @dhcp_srv_offload_enabled: enable or disable
+ * @dhcp_client_num: number of clients supported
+ * @dhcp_srv_ip: server ip address
+ * @start_lsb: lsb of start address of dhcp pool
+ */
+typedef struct
+{
+    tANI_U8 bssidx;
+    tANI_U32 dhcp_srv_offload_enabled;
+    tANI_U32 dhcp_client_num;
+    tANI_U32 dhcp_srv_ip;
+    tANI_U32 start_lsb;
+    dhcp_offload_req_cb    dhcp_offload_callback;
+    void                   *dhcp_server_offload_cb_context;
+} sir_dhcp_srv_offload_info_t, *sir_dhcp_srv_offload_info;
+#endif /* DHCP_SERVER_OFFLOAD */
+
+#ifdef MDNS_OFFLOAD
+#define MAX_MDNS_FQDN_LEN                         64
+#define MAX_MDNS_RESP_LEN                         512
+
+typedef struct
+{
+    tANI_U8 bss_idx;
+    tANI_U32 enable;
+    mdns_enable_req_cb    mdns_enable_callback;
+    void                   *mdns_enable_cb_context;
+} sir_mdns_offload_info_t, *sir_mdns_offload_info;
+
+typedef struct
+{
+    tANI_U8 bss_idx;
+    tANI_U32 fqdn_type;
+    tANI_U32 fqdn_len;
+    tANI_U8 fqdn_data[MAX_MDNS_FQDN_LEN];
+    mdns_fqdn_req_cb    mdns_fqdn_callback;
+    void                *mdns_fqdn_cb_context;
+
+} sir_mdns_fqdn_info_t, *sir_mdns_fqdn_info;
+
+typedef struct
+{
+    tANI_U8 bss_idx;
+    tANI_U32 resourceRecord_count;
+    tANI_U32 resp_len;
+    tANI_U8 resp_data[MAX_MDNS_RESP_LEN];
+    mdns_resp_req_cb    mdns_resp_callback;
+    void                *mdns_resp_cb_context;
+} sir_mdns_resp_info_t, *sir_mdns_resp_info;
+
+typedef struct
+{
+    tANI_U8 bss_idx;
+} sir_get_mdns_stats_info_t, *sir_get_mdns_stats_info;
+#endif /* MDNS_OFFLOAD */
 
 typedef PACKED_PRE struct PACKED_POST
 {
@@ -5581,22 +5720,6 @@ typedef PACKED_PRE struct PACKED_POST
     tANI_BOOLEAN         moreData;
     tANI_U8 result[1];
 } tSirWifiScanResultEvent, *tpSirWifiScanResultEvent;
-
-/* WLAN_HAL_SSID_HOTLIST_RESULT_IND */
-
-typedef PACKED_PRE struct PACKED_POST
-{
-    tANI_U32             requestId;
-    tANI_BOOLEAN         ssid_found;
-    tANI_U32             numHotlistSsid;     // numbers of SSIDs
-
-    /*
-     * 0 for last fragment
-     * 1 still more fragment(s) coming
-     */
-    tANI_BOOLEAN         moreData;
-    tSirWifiScanResult   ssidHotlist[1];
-} tSirEXTScanSsidHotlistMatch, *tpSirEXTScanSsidHotlistMatch;
 
 typedef PACKED_PRE struct PACKED_POST
 {
@@ -5726,49 +5849,6 @@ typedef PACKED_PRE struct PACKED_POST
     tANI_U32      requestId;
     tANI_U32      status;
 } tSirEXTScanResetBssidHotlistRspParams, *tpSirEXTScanResetBssidHotlistRspParams;
-
-typedef struct
-{
-    tANI_U32      requestId;
-    tANI_U8       sessionId;
-} tSirEXTScanResetSsidHotlistReqParams, *tpSirEXTScanResetSsidHotlistReqParams;
-
-typedef PACKED_PRE struct PACKED_POST
-{
-    tANI_U32      requestId;
-    tANI_U32      status;
-} tSirEXTScanResetSsidHotlistRspParams, *tpSirEXTScanResetSsidHotlistRspParams;
-
-
-/**
- * struct sir_ssid_hotlist_param - param for SSID Hotlist
- * @ssid: SSID which is being hotlisted
- * @band: Band in which the given SSID should be scanned
- * @rssi_low: Low bound on RSSI
- * @rssi_high: High bound on RSSI
- */
-typedef struct
-{
-    tSirMacSSid ssid;
-    tANI_U8 band;
-    tANI_S32 rssi_low;
-    tANI_S32 rssi_high;
-}tSirSsidThresholdParam, *tpSirSsidThresholdParam;
-
-typedef struct
-{
-    tANI_U32 request_id;
-    tANI_U8 session_id;
-    tANI_U32 lost_ssid_sample_size;
-    tANI_U32 ssid_count;
-    tSirSsidThresholdParam ssid[WLAN_EXTSCAN_MAX_HOTLIST_SSIDS];
-}tSirEXTScanSetSsidHotListReqParams, *tpSirEXTScanSetSsidHotListReqParams;
-
-typedef PACKED_PRE struct PACKED_POST
-{
-    tANI_U32      requestId;
-    tANI_U32      status;
-} tSirEXTScanSetSsidHotListRspParams, *tpSirEXTScanSetSsidHotListRspParams;
 
 /*---------------------------------------------------------------------------
  *  * WLAN_HAL_EXTSCAN_RESULT_AVAILABLE_IND
@@ -6062,5 +6142,188 @@ typedef struct {
    tANI_U32  value;
 } tModifyRoamParamsReqParams, * tpModifyRoamParamsReqParams;
 
+#ifdef SAP_AUTH_OFFLOAD
+/* 80211 Pre-Share Key length */
+#define SIR_PSK_MAX_LEN   64
 
+/**
+ * enum tSirSecurityType - definition for Software AP Auth Offload
+ *                         Security Type
+ * @eSIR_OFFLOAD_NONE: None type security
+ * @eSIR_OFFLOAD_WPA2PSK_CCMP: WPA2-PSK
+ */
+enum tSirSecurityType
+{
+    eSIR_OFFLOAD_NONE,
+    eSIR_OFFLOAD_WPA2PSK_CCMP,
+};
+
+/**
+ * struct tSirSapOffloadInfo - Structure to store sap offload related params.
+ * @macAddr: Self mac address
+ * @sap_auth_offload_enable: tell if sap auth offload is enabled or not.
+ * @sap_auth_offload_sec_type: tells security type
+ *        0 - none
+ *        1 - WPA1-PSK
+ * @key_len: psk key length
+ * @key: psk key.
+ */
+struct tSirSapOffloadInfo
+{
+    tSirMacAddr macAddr;
+    bool sap_auth_offload_enable;
+    uint32_t sap_auth_offload_sec_type;
+    uint32_t key_len;
+    uint8_t key[SIR_PSK_MAX_LEN];
+};
+
+typedef PACKED_PRE struct PACKED_POST
+{
+    /** staId returned from firmware for each STA association to SAP */
+    tANI_U8 staIdx;
+    /** bssIdx on which the STA is added */
+    tANI_U8 bssIdx;
+    /** DPU desc index of this station */
+    tANI_U8 dpuIndex;
+    /** Bcast DPU index of this station */
+    tANI_U8 bcastDpuIndex;
+    /** Bcast DPU Management index of this station */
+    tANI_U8 bcastMgmtDpuIdx;
+
+    tANI_U8 ucUcastSig;
+
+    tANI_U8 ucBcastSig;
+
+    tANI_U8 ucMgmtSig;
+    /** aid (association id) of this station */
+    tANI_U32 assoc_id;
+    /** peer station's mac addr */
+    tSirMacAddr peer_macaddr;
+    /** length of association request frame */
+    tANI_U32 data_len;
+    /* Following this structure is the byte stream of a whole
+     * association request frame of length data_len
+     */
+    tANI_U8 bufp[1];
+} tSapOfldAddStaIndMsg, *tpSapOfldAddStaIndMsg;
+
+typedef enum
+{
+    SAP_OFL_DEL_STA_FLAG_NONE       = 0x00,
+    SAP_OFL_DEL_STA_FLAG_RECONNECT  = 0x01,
+} eSapOfldDelStaFlags;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+    tANI_U32 staIdx;
+    /** bssIdx on which the STA is added */
+    tANI_U32 bssIdx;
+    /** aid (association id) of this station */
+    tANI_U32 assoc_id;
+    /** peer station's mac addr */
+    tSirMacAddr peer_macaddr;
+    /** disassociation reason */
+    tANI_U32 reason;
+    /** flags - wmi_sap_ofl_del_sta_flags */
+    tANI_U32 flags;
+} tSapOfldDelStaIndMsg, *tpSapOfldDelStaIndMsg;
+
+typedef enum
+{
+    SAP_OFFLOAD_ADD_STA_IND       = 0x00,
+    SAP_OFFLOAD_DEL_STA_IND       = 0x01,
+} eSapOfldIndType;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+    /* indType will be from eSapOfldIndType */
+    tANI_U32 indType;
+    /* size of this array will be depend on the indication type.
+     * Indication type can be either ADD_STA_IND or DEL_STA_IND.
+     * If indication type is ADD_STA_IND, size of this indication
+     * array will be sizeof(tSapOfldDelStaIndMsg)
+     * and if indication type is DEL_STA_IND, size of this indication
+     * arrary will be sizeof(tSapOfldAddStaIndMsg)
+     */
+    tANI_U8         indication[1];
+} tSapOfldInd;
+
+typedef PACKED_PRE struct PACKED_POST
+{
+    tANI_U32 num_indications;
+    /* size of this array will be depend on the number of indications.*/
+    tSapOfldInd indications[1];
+}tSapOfldIndications;
+
+#endif /* SAP_AUTH_OFFLOAD */
+
+/**
+ * struct stsf - the basic stsf structure
+ *
+ * @session_id: session id from adapter
+ * @set_req: set/get request flag.
+ * @tsf_low: low 32bits of tsf
+ * @tsf_high: high 32bits of tsf
+ *
+ * driver use this struct to store the tsf info
+ */
+struct stsf {
+    uint32_t session_id;
+    bool     set_tsf_req;
+    uint32_t tsf_low;
+    uint32_t tsf_high;
+    bool tsf_req_status;
+};
+
+typedef int(*tsf_rsp_cb)(void *tsf_ctx, struct stsf *pTsf);
+
+/**
+ * struct tCapTsfParams - capture tsf request
+ * @bss_idx: bss index, SAP/STA
+ * @session_id: adapter session id
+ * @bssid: bssid for SAP/STA
+ * @tsf_rsp_cb_func : handler for tsf rsp from fw
+ * @tsf_rsp_cb_ctx : hdd ctx for tsf rsp handler
+ */
+typedef struct {
+    tANI_U8 bss_idx;
+    tANI_U8 session_id;
+    tSirMacAddr  bssid;
+    tsf_rsp_cb tsf_rsp_cb_func;
+    void * tsf_rsp_cb_ctx;
+}tSirCapTsfParams,*tpSirCapTsfParams;
+
+#ifdef WLAN_FEATURE_LFR_MBB
+
+/**
+ * enum csr_roam_op_code - Operation to be done by the callback.
+ * @SIR_ROAMING_DEREGISTER_STA: Deregister the old STA after roaming.
+ * @SIR_STOP_ROAM_OFFLOAD_SCAN : sends RSO stop
+ * @SIR_PREPARE_REASSOC_REQ: prepares reassoc request
+ */
+enum csr_roam_op_code {
+    SIR_ROAMING_DEREGISTER_STA,
+    SIR_STOP_ROAM_OFFLOAD_SCAN,
+    SIR_PREPARE_REASSOC_REQ,
+};
+
+/**
+ * enum sir_roam_cleanup_type - Type of cleanup needs to be performed.
+ * @SIR_MBB_DISCONNECTED: Entire CSR cleanup for connected AP
+ * needs to be performed
+ * @SIR_MBB_CONNECTED: No need to perform CSR cleanup for connected AP.
+ */
+enum sir_roam_cleanup_type {
+    SIR_MBB_DISCONNECTED,
+    SIR_MBB_CONNECTED,
+};
+#endif
+
+/**
+ * struct tDelBaParams - Del BA Session req
+ * @session_id: adapter session id
+ */
+typedef struct {
+    tANI_U8 session_id;
+}tDelBaParams,*ptDelBaParams;
 #endif /* __SIR_API_H */

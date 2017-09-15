@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -49,6 +49,9 @@
 #include "limSerDesUtils.h"
 #include "limSendMessages.h"
 #include "schApi.h"
+#ifdef WLAN_FEATURE_LFR_MBB
+#include "lim_mbb.h"
+#endif
 
 
 /**
@@ -83,7 +86,6 @@ limProcessDisassocFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession
 
     pHdr = WDA_GET_RX_MAC_HEADER(pRxPacketInfo);
     pBody = WDA_GET_RX_MPDU_DATA(pRxPacketInfo);
-
 
     if (limIsGroupAddr(pHdr->sa))
     {
@@ -160,6 +162,13 @@ limProcessDisassocFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession
         return;
     }
 
+#ifdef WLAN_FEATURE_LFR_MBB
+    if (lim_is_mbb_reassoc_in_progress(pMac, psessionEntry)) {
+        limLog(pMac, LOGE, FL("Ignore Disassoc frame as LFR MBB in progress"));
+        return;
+    }
+#endif
+
     /** If we are in the Wait for ReAssoc Rsp state */
     if (limIsReassocInProgress(pMac,psessionEntry)) {
         /** If we had received the DisAssoc from,
@@ -216,10 +225,6 @@ limProcessDisassocFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession
                 (psessionEntry->limSmeState != eLIM_SME_WT_ASSOC_STATE)  &&
                 (psessionEntry->limSmeState != eLIM_SME_WT_REASSOC_STATE) ))
     {
-        PELOGE(limLog(pMac, LOGE,
-               FL("received Disassoc with reason code= %d disassoc frame rssi = "
-                "%d from "MAC_ADDRESS_STR), reasonCode,
-                (uint)abs((tANI_S8)WDA_GET_RX_RSSI_DB(pRxPacketInfo)),MAC_ADDR_ARRAY(pHdr->sa));)
         switch (reasonCode)
         {
             case eSIR_MAC_UNSPEC_FAILURE_REASON:

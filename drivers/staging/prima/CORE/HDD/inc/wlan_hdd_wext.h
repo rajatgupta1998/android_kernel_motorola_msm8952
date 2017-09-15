@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -463,12 +463,6 @@ void* wlan_hdd_change_country_code_callback(void *pAdapter);
 int hdd_setBand(struct net_device *dev, u8 ui_band);
 int hdd_setBand_helper(struct net_device *dev, const char *command);
 VOS_STATUS wlan_hdd_get_frame_logs(hdd_adapter_t *pAdapter, v_U8_t flag);
-int wlan_hdd_set_proximity(int set_value);
-
-// IKJB42MAIN-1244, Motorola, a19091 - START
-int wlan_hdd_update_v6_filters(hdd_adapter_t *pAdapter, v_U8_t set);
-int wlan_hdd_set_v6_filter(void *pAdapter, v_U8_t set, v_U8_t userSet);
-// IKJB42MAIN-1244, Motorola, a19091 - END
-
+int wlan_hdd_set_proximity(int set_value, tHalHandle hal);
 #endif // __WEXT_IW_H__
 

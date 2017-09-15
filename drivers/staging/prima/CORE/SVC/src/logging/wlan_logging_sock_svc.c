@@ -280,7 +280,7 @@ static int wlan_send_sock_msg_to_app(tAniHdr *wmsg, int radio,
 	tAniNlHdr *wnl = NULL;
 	struct sk_buff *skb;
 	struct nlmsghdr *nlh;
-	int wmsg_length = wmsg->length;
+	int wmsg_length = ntohs(wmsg->length);
 	static int nlmsg_seq;
 
 	if (radio < 0 || radio > ANI_MAX_RADIOS) {
@@ -290,6 +290,7 @@ static int wlan_send_sock_msg_to_app(tAniHdr *wmsg, int radio,
 	}
 
 	payload_len = wmsg_length + sizeof(wnl->radio) + sizeof(tAniHdr);
+
 	tot_msg_len = NLMSG_SPACE(payload_len);
 	skb = dev_alloc_skb(tot_msg_len);
 	if (skb == NULL) {
@@ -317,19 +318,16 @@ static int wlan_send_sock_msg_to_app(tAniHdr *wmsg, int radio,
 
 static void set_default_logtoapp_log_level(void)
 {
-#ifdef ENABLE_DRIVER_VERBOSE
-
-//	vos_trace_setValue(VOS_MODULE_ID_WDI, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
+	vos_trace_setValue(VOS_MODULE_ID_WDI, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
 	vos_trace_setValue(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
 	vos_trace_setValue(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
 	vos_trace_setValue(VOS_MODULE_ID_PE,  VOS_TRACE_LEVEL_ALL, VOS_TRUE);
-//	vos_trace_setValue(VOS_MODULE_ID_WDA, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
+	vos_trace_setValue(VOS_MODULE_ID_WDA, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
 	vos_trace_setValue(VOS_MODULE_ID_HDD_SOFTAP, VOS_TRACE_LEVEL_ALL,
 			VOS_TRUE);
 	vos_trace_setValue(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
-//	vos_trace_setValue(VOS_MODULE_ID_PMC, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
-//	vos_trace_setValue(VOS_MODULE_ID_SVC, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
-#endif
+	vos_trace_setValue(VOS_MODULE_ID_PMC, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
+	vos_trace_setValue(VOS_MODULE_ID_SVC, VOS_TRACE_LEVEL_ALL, VOS_TRUE);
 }
 
 static void clear_default_logtoapp_log_level(void)
@@ -1278,7 +1276,7 @@ static int wlan_logging_proc_sock_rx_msg(struct sk_buff *skb)
 	tAniNlHdr *wnl;
 	int radio;
 	int type;
-	int ret;
+	int ret, len;
 	unsigned long flags;
 
         if (TRUE == vos_isUnloadInProgress())
@@ -1297,10 +1295,12 @@ static int wlan_logging_proc_sock_rx_msg(struct sk_buff *skb)
 		return -EINVAL;
 	}
 
-	if (wnl->wmsg.length > skb->data_len)
+	len = ntohs(wnl->wmsg.length) + sizeof(tAniNlHdr);
+
+	if (len > skb_headlen(skb))
 	{
-		pr_err("%s: invalid length msgLen:%x skb data_len:%x \n",
-		       __func__, wnl->wmsg.length, skb->data_len);
+		pr_err("%s: invalid length, msgLen:%x skb len:%x headLen: %d data_len: %d",
+		       __func__, len, skb->len, skb_headlen(skb), skb->data_len);
 		return -EINVAL;
 	}
 
