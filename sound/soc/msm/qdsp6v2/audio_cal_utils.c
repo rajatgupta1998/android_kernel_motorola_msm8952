@@ -607,7 +607,7 @@ err:
 	kfree(cal_block->cal_info);
 	cal_block->cal_info = NULL;
 	kfree(cal_block->client_info);
-	cal_block->client_info = NULL;
+	cal_block->cal_info = NULL;
 	kfree(cal_block);
 	cal_block = NULL;
 	return cal_block;
