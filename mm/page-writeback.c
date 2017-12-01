@@ -485,7 +485,7 @@ static void writeout_period(unsigned long t)
  * registered backing devices, which, for obvious reasons, can not
  * exceed 100%.
  */
-static unsigned int bdi_min_ratio = 5;
+static unsigned int bdi_min_ratio;
 
 int bdi_set_min_ratio(struct backing_dev_info *bdi, unsigned int min_ratio)
 {
@@ -2399,7 +2399,7 @@ int test_clear_page_writeback(struct page *page)
 	return ret;
 }
 
-int test_set_page_writeback(struct page *page)
+int __test_set_page_writeback(struct page *page, bool keep_write)
 {
 	struct address_space *mapping = page_mapping(page);
 	int ret;
@@ -2421,9 +2421,10 @@ int test_set_page_writeback(struct page *page)
 			radix_tree_tag_clear(&mapping->page_tree,
 						page_index(page),
 						PAGECACHE_TAG_DIRTY);
-		radix_tree_tag_clear(&mapping->page_tree,
-				     page_index(page),
-				     PAGECACHE_TAG_TOWRITE);
+		if (!keep_write)
+			radix_tree_tag_clear(&mapping->page_tree,
+						page_index(page),
+						PAGECACHE_TAG_TOWRITE);
 		spin_unlock_irqrestore(&mapping->tree_lock, flags);
 	} else {
 		ret = TestSetPageWriteback(page);
@@ -2433,7 +2434,7 @@ int test_set_page_writeback(struct page *page)
 	return ret;
 
 }
-EXPORT_SYMBOL(test_set_page_writeback);
+EXPORT_SYMBOL(__test_set_page_writeback);
 
 /*
  * Return true if any of the pages in the mapping are marked with the

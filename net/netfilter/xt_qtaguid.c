@@ -1732,11 +1732,10 @@ static bool qtaguid_mt(const struct sk_buff *skb, struct xt_action_param *par)
 		res = false;
 		goto put_sock_ret_res;
 	}
-
-	if (do_tag_stat)
-		account_for_uid(skb, sk, sock_uid, par);
-
 	sock_uid = sk->sk_uid;
+	if (do_tag_stat)
+		account_for_uid(skb, sk, from_kuid(&init_user_ns, sock_uid),
+				par);
 
 	/*
 	 * The following two tests fail the match when:
@@ -1763,16 +1762,18 @@ static bool qtaguid_mt(const struct sk_buff *skb, struct xt_action_param *par)
 		set_sk_callback_lock = true;
 		read_lock_bh(&sk->sk_callback_lock);
 		MT_DEBUG("qtaguid[%d]: sk=%p->sk_socket=%p->file=%p\n",
-			par->hooknum, sk, sk->sk_socket,
-			sk->sk_socket ? sk->sk_socket->file : (void *)-1LL);
+			 par->hooknum, sk, sk->sk_socket,
+			 sk->sk_socket ? sk->sk_socket->file : (void *)-1LL);
 		filp = sk->sk_socket ? sk->sk_socket->file : NULL;
 		if (!filp) {
-			res = ((info->match ^ info->invert) & XT_QTAGUID_GID) == 0;
+			res = ((info->match ^ info->invert) &
+			       XT_QTAGUID_GID) == 0;
 			atomic64_inc(&qtu_events.match_no_sk_gid);
 			goto put_sock_ret_res;
 		}
 		MT_DEBUG("qtaguid[%d]: filp...uid=%u\n",
-			par->hooknum, filp ? from_kuid(&init_user_ns, filp->f_cred->fsuid) : -1);
+			 par->hooknum, filp ?
+			 from_kuid(&init_user_ns, filp->f_cred->fsuid) : -1);
 		if ((gid_gte(filp->f_cred->fsgid, gid_min) &&
 				gid_lte(filp->f_cred->fsgid, gid_max)) ^
 			!(info->invert & XT_QTAGUID_GID)) {
@@ -1918,7 +1919,7 @@ static int qtaguid_ctrl_proc_show(struct seq_file *m, void *v)
 	if (sock_tag_entry != SEQ_START_TOKEN) {
 		int sk_ref_count;
 		uid = get_uid_from_tag(sock_tag_entry->tag);
-		CT_DEBUG("qtaguid: proc_read(): sk=%pK tag=0x%llx (uid=%u) "
+		CT_DEBUG("qtaguid: proc_read(): sk=%p tag=0x%llx (uid=%u) "
 			 "pid=%u\n",
 			 sock_tag_entry->sk,
 			 sock_tag_entry->tag,

@@ -124,6 +124,10 @@ static struct page_info *alloc_largest_available(struct ion_system_heap *heap,
 	if (!info)
 		return NULL;
 
+	info = kmalloc(sizeof(struct page_info), GFP_KERNEL);
+	if (!info)
+		return NULL;
+
 	for (i = 0; i < num_orders; i++) {
 		if (size < order_to_size(orders[i]))
 			continue;

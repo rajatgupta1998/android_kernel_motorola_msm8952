@@ -334,11 +334,6 @@ static int sdcardfs_fasync(int fd, struct file *file, int flag)
 	return err;
 }
 
-static struct file *sdcardfs_get_lower_file(struct file *f)
-{
-	return sdcardfs_lower_file(f);
-}
-
 /*
  * Sdcardfs cannot use generic_file_llseek as ->llseek, because it would
  * only set the offset of the upper file.  So we have to implement our
@@ -361,6 +356,11 @@ out:
 	return err;
 }
 
+
+static struct file *sdcardfs_get_lower_file(struct file *f)
+{
+	return sdcardfs_lower_file(f);
+}
 
 const struct file_operations sdcardfs_main_fops = {
 	.llseek		= generic_file_llseek,

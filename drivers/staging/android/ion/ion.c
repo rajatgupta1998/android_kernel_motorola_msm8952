@@ -1,9 +1,9 @@
 /*
 
- * drivers/gpu/ion/ion.c
+ * drivers/staging/android/ion/ion.c
  *
  * Copyright (C) 2011 Google, Inc.
- * Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2017, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -696,7 +696,7 @@ static void user_ion_free_nolock(struct ion_client *client,
 		WARN(1, "%s: invalid handle passed to free.\n", __func__);
 		return;
 	}
-	if (!handle->user_ref_count > 0) {
+	if (handle->user_ref_count == 0) {
 		WARN(1, "%s: User does not have access!\n", __func__);
 		return;
 	}
@@ -2010,10 +2010,11 @@ void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap)
 	up_write(&dev->lock);
 }
 
-int ion_walk_heaps(struct ion_client *client, int heap_id, void *data,
+int ion_walk_heaps(struct ion_client *client, int heap_id,
+			enum ion_heap_type type, void *data,
 			int (*f)(struct ion_heap *heap, void *data))
 {
-	int ret_val = -EINVAL;
+	int ret_val = 0;
 	struct ion_heap *heap;
 	struct ion_device *dev = client->dev;
 	/*
@@ -2022,7 +2023,8 @@ int ion_walk_heaps(struct ion_client *client, int heap_id, void *data,
 	 */
 	down_write(&dev->lock);
 	plist_for_each_entry(heap, &dev->heaps, node) {
-		if (ION_HEAP(heap->id) != heap_id)
+		if (ION_HEAP(heap->id) != heap_id ||
+			type != heap->type)
 			continue;
 		ret_val = f(heap, data);
 		break;

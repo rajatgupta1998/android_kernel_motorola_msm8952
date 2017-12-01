@@ -5483,6 +5483,9 @@ struct swevent_htable {
 
 	/* Recursion avoidance in each contexts */
 	int				recursion[PERF_NR_CONTEXTS];
+
+	/* Keeps track of cpu being initialized/exited */
+	bool				online;
 };
 
 static DEFINE_PER_CPU(struct swevent_htable, swevent_htable);
@@ -5729,8 +5732,14 @@ static int perf_swevent_add(struct perf_event *event, int flags)
 	hwc->state = !(flags & PERF_EF_START);
 
 	head = find_swevent_head(swhash, event);
-	if (WARN_ON_ONCE(!head))
+	if (!head) {
+		/*
+		 * We can race with cpu hotplug code. Do not
+		 * WARN if the cpu just got unplugged.
+		 */
+		WARN_ON_ONCE(swhash->online);
 		return -EINVAL;
+	}
 
 	hlist_add_head_rcu(&event->hlist_entry, head);
 
@@ -5802,6 +5811,7 @@ static int swevent_hlist_get_cpu(struct perf_event *event, int cpu)
 	int err = 0;
 
 	mutex_lock(&swhash->hlist_mutex);
+
 	if (!swevent_hlist_deref(swhash) && cpu_online(cpu)) {
 		struct swevent_hlist *hlist;
 
@@ -6996,37 +7006,6 @@ static void mutex_lock_double(struct mutex *a, struct mutex *b)
 	mutex_lock_nested(b, SINGLE_DEPTH_NESTING);
 }
 
-/*
- * Variation on perf_event_ctx_lock_nested(), except we take two context
- * mutexes.
- */
-static struct perf_event_context *
-__perf_event_ctx_lock_double(struct perf_event *group_leader,
-			     struct perf_event_context *ctx)
-{
-	struct perf_event_context *gctx;
-
-again:
-	rcu_read_lock();
-	gctx = ACCESS_ONCE(group_leader->ctx);
-	if (!atomic_inc_not_zero(&gctx->refcount)) {
-		rcu_read_unlock();
-		goto again;
-	}
-	rcu_read_unlock();
-
-	mutex_lock_double(&gctx->mutex, &ctx->mutex);
-
-	if (group_leader->ctx != gctx) {
-		mutex_unlock(&ctx->mutex);
-		mutex_unlock(&gctx->mutex);
-		put_ctx(gctx);
-		goto again;
-	}
-
-	return gctx;
-}
-
 /**
  * sys_perf_event_open - open a performance event, associate it to a task/cpu
  *
@@ -7241,31 +7220,13 @@ SYSCALL_DEFINE5(perf_event_open,
 	}
 
 	if (move_group) {
-		gctx = __perf_event_ctx_lock_double(group_leader, ctx);
-
-		/*
-		 * Check if we raced against another sys_perf_event_open() call
-		 * moving the software group underneath us.
-		 */
-		if (!(group_leader->group_flags & PERF_GROUP_SOFTWARE)) {
-			/*
-			 * If someone moved the group out from under us, check
-			 * if this new event wound up on the same ctx, if so
-			 * its the regular !move_group case, otherwise fail.
-			 */
-			if (gctx != ctx) {
-				err = -EINVAL;
-				goto err_locked;
-			} else {
-				perf_event_ctx_unlock(group_leader, gctx);
-				move_group = 0;
-			}
-		}
+		gctx = group_leader->ctx;
 
 		/*
 		 * See perf_event_ctx_lock() for comments on the details
 		 * of swizzling perf_event::ctx.
 		 */
+		mutex_lock_double(&gctx->mutex, &ctx->mutex);
 
 		mutex_lock(&gctx->mutex);
 		perf_remove_from_context(group_leader, false);
@@ -7308,7 +7269,7 @@ SYSCALL_DEFINE5(perf_event_open,
 	perf_unpin_context(ctx);
 
 	if (move_group) {
-		perf_event_ctx_unlock(group_leader, gctx);
+		mutex_unlock(&gctx->mutex);
 		put_ctx(gctx);
 	}
 	mutex_unlock(&ctx->mutex);
@@ -7339,11 +7300,6 @@ SYSCALL_DEFINE5(perf_event_open,
 	fd_install(event_fd, event_file);
 	return event_fd;
 
-err_locked:
-	if (move_group)
-		perf_event_ctx_unlock(group_leader, gctx);
-	mutex_unlock(&ctx->mutex);
-	fput(event_file);
 err_context:
 	perf_unpin_context(ctx);
 	put_ctx(ctx);
@@ -7957,6 +7913,7 @@ static void __cpuinit perf_event_init_cpu(int cpu)
 	struct swevent_htable *swhash = &per_cpu(swevent_htable, cpu);
 
 	mutex_lock(&swhash->hlist_mutex);
+	swhash->online = true;
 	if (swhash->hlist_refcount > 0) {
 		struct swevent_hlist *hlist;
 
@@ -8057,6 +8014,13 @@ static void perf_event_start_swclock(int cpu)
 
 static void perf_event_exit_cpu(int cpu)
 {
+	struct swevent_htable *swhash = &per_cpu(swevent_htable, cpu);
+
+	mutex_lock(&swhash->hlist_mutex);
+	swhash->online = false;
+	swevent_hlist_release(swhash);
+	mutex_unlock(&swhash->hlist_mutex);
+
 	perf_event_exit_cpu_context(cpu);
 }
 #else

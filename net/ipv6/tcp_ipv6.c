@@ -253,7 +253,7 @@ static int tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 	fl6.flowi6_mark = sk->sk_mark;
 	fl6.fl6_dport = usin->sin6_port;
 	fl6.fl6_sport = inet->inet_sport;
-	fl6.flowi6_uid = sk->sk_uid;
+	fl6.flowi6_uid = sock_i_uid(sk);
 
 	opt = rcu_dereference_protected(np->opt, sock_owned_by_user(sk));
 	final_p = fl6_update_dst(&fl6, opt, &final);
@@ -802,7 +802,6 @@ static void tcp_v6_send_response(struct sock *sk, struct sk_buff *skb, u32 seq,
 	fl6.flowi6_mark = IP6_REPLY_MARK(net, skb->mark);
 	fl6.fl6_dport = t1->dest;
 	fl6.fl6_sport = t1->source;
-	fl6.flowi6_uid = sock_net_uid(net, sk && sk_fullsock(sk) ? sk : NULL);
 	security_skb_classify_flow(skb, flowi6_to_flowi(&fl6));
 
 	/* Pass a socket to ip6_dst_lookup either it is for RST
@@ -913,14 +912,8 @@ static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
 static void tcp_v6_reqsk_send_ack(struct sock *sk, struct sk_buff *skb,
 				  struct request_sock *req)
 {
-	/* RFC 7323 2.3
-	 * The window field (SEG.WND) of every outgoing segment, with the
-	 * exception of <SYN> segments, MUST be right-shifted by
-	 * Rcv.Wind.Shift bits:
-	 */
 	tcp_v6_send_ack(sk, skb, tcp_rsk(req)->snt_isn + 1, tcp_rsk(req)->rcv_isn + 1,
-			req->rcv_wnd >> inet_rsk(req)->rcv_wscale,
-			tcp_time_stamp, req->ts_recent,
+			req->rcv_wnd, tcp_time_stamp, req->ts_recent,
 			tcp_v6_md5_do_lookup(sk, &ipv6_hdr(skb)->daddr), 0);
 }
 

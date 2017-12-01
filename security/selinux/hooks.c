@@ -435,7 +435,15 @@ static int sb_finish_set_opts(struct super_block *sb)
 	if (!strcmp(sb->s_type->name, "sysfs") ||
 	    !strcmp(sb->s_type->name, "pstore") ||
 	    !strcmp(sb->s_type->name, "debugfs") ||
+	    !strcmp(sb->s_type->name, "tracefs") ||
 	    !strcmp(sb->s_type->name, "rootfs"))
+		sbsec->flags |= SE_SBLABELSUPP;
+
+	/*
+	 * Special handling for rootfs. Is genfs but supports
+	 * setting SELinux context on in-core inodes.
+	 */
+	if (strncmp(sb->s_type->name, "rootfs", sizeof("rootfs")) == 0)
 		sbsec->flags |= SE_SBLABELSUPP;
 
 	/*
@@ -710,6 +718,7 @@ static int selinux_set_mnt_opts(struct super_block *sb,
 		sbsec->flags |= SE_SBPROC | SE_SBGENFS;
 
 	if (!strcmp(sb->s_type->name, "debugfs") ||
+	    !strcmp(sb->s_type->name, "tracefs") ||
 	    !strcmp(sb->s_type->name, "sysfs") ||
 	    !strcmp(sb->s_type->name, "pstore"))
 		sbsec->flags |= SE_SBGENFS;

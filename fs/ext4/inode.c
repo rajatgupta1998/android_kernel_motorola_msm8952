@@ -3015,7 +3015,7 @@ static int ext4_readpage(struct file *file, struct page *page)
 		ret = ext4_readpage_inline(inode, page);
 
 	if (ret == -EAGAIN)
-		return mpage_readpage(page, ext4_get_block);
+		return ext4_mpage_readpages(page->mapping, NULL, page, 1);
 
 	return ret;
 }
@@ -3030,7 +3030,7 @@ ext4_readpages(struct file *file, struct address_space *mapping,
 	if (ext4_has_inline_data(inode))
 		return 0;
 
-	return mpage_readpages(mapping, pages, nr_pages, ext4_get_block);
+	return ext4_mpage_readpages(mapping, pages, NULL, nr_pages);
 }
 
 static void ext4_invalidatepage(struct page *page, unsigned long offset)
@@ -3626,7 +3626,6 @@ int ext4_can_truncate(struct inode *inode)
 
 int ext4_punch_hole(struct file *file, loff_t offset, loff_t length)
 {
-#if 0
 	struct inode *inode = file_inode(file);
 	struct super_block *sb = inode->i_sb;
 	ext4_lblk_t first_block, stop_block;
@@ -3812,12 +3811,6 @@ out_dio:
 out_mutex:
 	mutex_unlock(&inode->i_mutex);
 	return ret;
-#else
-	/*
-	 * Disabled as per b/28760453
-	 */
-	return -EOPNOTSUPP;
-#endif
 }
 
 /*

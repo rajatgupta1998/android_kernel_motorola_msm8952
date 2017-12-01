@@ -707,8 +707,10 @@ static int compat_gpr_get(struct task_struct *target,
 			kbuf += sizeof(reg);
 		} else {
 			ret = copy_to_user(ubuf, &reg, sizeof(reg));
-			if (ret)
+			if (ret) {
+				ret = -EFAULT;
 				break;
+			}
 
 			ubuf += sizeof(reg);
 		}
@@ -746,8 +748,10 @@ static int compat_gpr_set(struct task_struct *target,
 			kbuf += sizeof(reg);
 		} else {
 			ret = copy_from_user(&reg, ubuf, sizeof(reg));
-			if (ret)
-				return ret;
+			if (ret) {
+				ret = -EFAULT;
+				break;
+			}
 
 			ubuf += sizeof(reg);
 		}
@@ -1121,7 +1125,19 @@ const struct user_regset_view *task_user_regset_view(struct task_struct *task)
 long arch_ptrace(struct task_struct *child, long request,
 		 unsigned long addr, unsigned long data)
 {
-	return ptrace_request(child, request, addr, data);
+	int ret;
+
+	switch (request) {
+		case PTRACE_SET_SYSCALL:
+			task_pt_regs(child)->syscallno = data;
+			ret = 0;
+			break;
+		default:
+			ret = ptrace_request(child, request, addr, data);
+			break;
+	}
+
+	return ret;
 }
 
 enum ptrace_syscall_dir {
