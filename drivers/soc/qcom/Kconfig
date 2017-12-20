@@ -727,6 +727,14 @@ config BOOTINFO
 	  from both kernel context (via function call) and user
 	  context (via /proc/bootinfo).
 
+config MMI_DEVICE_DTBS
+ 	depends on ARCH_MSM
+ 	default n
+ 	bool "Motorola Mobility Device DTBs"
+ 	help
+ 	  Only include Motorola device specific DTBs to limit the number that
+	  get built during kernel compilation.
+
 config MMI_SOC_INFO
 	default n
 	bool "Motorola Mobility SOC Info"
