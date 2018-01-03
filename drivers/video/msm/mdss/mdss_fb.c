@@ -96,7 +96,7 @@ static ssize_t _name##_store(struct device *dev, \
 				} while (0)
 
 bool backlight_dimmer = false;
-module_param(backlight_dimmer, bool, 0755);
+module_param(backlight_dimmer, bool, 0644);
 
 static struct fb_info *fbi_list[MAX_FBI_LIST];
 static int fbi_list_index;
