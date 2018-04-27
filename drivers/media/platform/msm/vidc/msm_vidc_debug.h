@@ -101,6 +101,12 @@ extern int msm_vidc_thermal_mitigation_disabled;
 	__str; \
 	})
 
+#if defined(CONFIG_TRACING) && defined(DEBUG)
+#define msm_trace_printk(...) trace_printk(__VA_ARGS__)
+#else
+#define msm_trace_printk(...)
+#endif
+
 #define dprintk(__level, __fmt, arg...)	\
 	do { \
 		if (msm_vidc_debug & __level) { \
@@ -109,7 +115,7 @@ extern int msm_vidc_thermal_mitigation_disabled;
 						VIDC_MSG_PRIO2STRING(__level), \
 						## arg); \
 			} else if (msm_vidc_debug_out == VIDC_OUT_FTRACE) { \
-				trace_printk(KERN_DEBUG VIDC_DBG_TAG __fmt, \
+				msm_trace_printk(KERN_DEBUG VIDC_DBG_TAG __fmt, \
 						VIDC_MSG_PRIO2STRING(__level), \
 						## arg); \
 			} \
