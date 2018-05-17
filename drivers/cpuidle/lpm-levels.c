@@ -147,10 +147,6 @@ module_param_named(
 	print_parsed_dt, print_parsed_dt, bool, S_IRUGO | S_IWUSR | S_IWGRP
 );
 
-static bool sleep_disabled;
-module_param_named(sleep_disabled,
-	sleep_disabled, bool, S_IRUGO | S_IWUSR | S_IWGRP);
-
 static int lpm_level_debug_mask;
 module_param_named(
 	debug_mask, lpm_level_debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP
@@ -545,9 +541,6 @@ static int cpu_power_select(struct cpuidle_device *dev,
 
 	if (!cpu)
 		return -EINVAL;
-
-	if (sleep_disabled)
-		return 0;
 
 	idx_restrict = cpu->nlevels + 1;
 
