@@ -709,7 +709,6 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 	wdog_dd->dev = &pdev->dev;
 	platform_set_drvdata(pdev, wdog_dd);
 	cpumask_clear(&wdog_dd->alive_mask);
-	g_wdog_dd = wdog_dd;
 	wdog_dd->watchdog_task = kthread_create(watchdog_kthread, wdog_dd,
 			"msm_watchdog");
 	if (IS_ERR(wdog_dd->watchdog_task)) {
@@ -717,6 +716,7 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 		goto err;
 	}
 	init_watchdog_data(wdog_dd);
+	g_wdog_dd = wdog_dd;
 	return 0;
 err:
 	kzfree(wdog_dd);
