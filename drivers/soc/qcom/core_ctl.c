@@ -1,30 +1,14 @@
 /*
- * Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials provided
- *       with the distribution.
- *     * Neither the name of The Linux Foundation nor the names of its
- *       contributors may be used to endorse or promote products derived
- *       from this software without specific prior written permission.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
  *
- * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
- * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS
- * BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
- * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
- * OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN
- * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -39,6 +23,7 @@
 #include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/sched.h>
+#include <linux/sched/rt.h>
 #include <soc/qcom/core_ctl.h>
 #include <linux/mutex.h>
 
@@ -200,6 +185,7 @@ static ssize_t store_busy_up_thres(struct cpu_data *state,
 static ssize_t show_busy_up_thres(struct cpu_data *state, char *buf)
 {
 	int i, count = 0;
+
 	for (i = 0; i < state->num_cpus; i++)
 		count += snprintf(buf + count, PAGE_SIZE - count, "%u ",
 				  state->busy_up_thres[i]);
@@ -231,6 +217,7 @@ static ssize_t store_busy_down_thres(struct cpu_data *state,
 static ssize_t show_busy_down_thres(struct cpu_data *state, char *buf)
 {
 	int i, count = 0;
+
 	for (i = 0; i < state->num_cpus; i++)
 		count += snprintf(buf + count, PAGE_SIZE - count, "%u ",
 				  state->busy_down_thres[i]);
@@ -307,7 +294,7 @@ static ssize_t show_global_state(struct cpu_data *state, char *buf)
 					"\tIs busy: %u\n", c->is_busy);
 		if (c->cpu != c->first_cpu)
 			continue;
-		count += snprintf(buf + count, PAGE_SIZE- count,
+		count += snprintf(buf + count, PAGE_SIZE - count,
 					"\tNr running: %u\n", c->nrrun);
 		count += snprintf(buf + count, PAGE_SIZE - count,
 					"\tAvail CPUs: %u\n", c->avail_cpus);
@@ -319,7 +306,7 @@ static ssize_t show_global_state(struct cpu_data *state, char *buf)
 }
 
 static ssize_t store_not_preferred(struct cpu_data *state,
-							const char *buf, size_t count)
+				   const char *buf, size_t count)
 {
 	struct cpu_data *c;
 	unsigned int i, first_cpu;
@@ -582,6 +569,7 @@ static bool eval_need(struct cpu_data *f)
 		ret = 1;
 	} else if (need_cpus < last_need) {
 		s64 elapsed = now - f->need_ts;
+
 		if (elapsed >= f->offline_delay_ms) {
 			ret = 1;
 		} else {
@@ -595,7 +583,8 @@ static bool eval_need(struct cpu_data *f)
 		f->need_cpus = need_cpus;
 	}
 
-	trace_core_ctl_eval_need(f->cpu, last_need, need_cpus, ret && need_flag);
+	trace_core_ctl_eval_need(f->cpu, last_need, need_cpus,
+				 ret && need_flag);
 	spin_unlock_irqrestore(&state_lock, flags);
 
 	return ret && need_flag;
@@ -719,7 +708,7 @@ static void __ref do_hotplug(struct cpu_data *f)
 				continue;
 
 			pr_debug("Trying to Offline CPU%u\n", c->cpu);
-			if (cpu_down(c->cpu))
+			if (core_ctl_offline_core(c->cpu))
 				pr_debug("Unable to Offline CPU%u\n", c->cpu);
 		}
 
@@ -738,7 +727,7 @@ static void __ref do_hotplug(struct cpu_data *f)
 				break;
 
 			pr_debug("Trying to Offline CPU%u\n", c->cpu);
-			if (cpu_down(c->cpu))
+			if (core_ctl_offline_core(c->cpu))
 				pr_debug("Unable to Offline CPU%u\n", c->cpu);
 		}
 	} else if (f->online_cpus < need) {
@@ -931,7 +920,6 @@ static struct notifier_block __refdata cpu_notifier = {
 
 /* ============================ init code ============================== */
 
-#define HOTPLUG_THREAD_NICE_VAL -7
 static int group_init(struct cpumask *mask)
 {
 	struct device *dev;
@@ -939,6 +927,7 @@ static int group_init(struct cpumask *mask)
 	struct cpu_data *f = &per_cpu(cpu_state, first_cpu);
 	struct cpu_data *state;
 	unsigned int cpu;
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 
 	if (likely(f->inited))
 		return 0;
@@ -986,7 +975,7 @@ static int group_init(struct cpumask *mask)
 
 	f->hotplug_thread = kthread_run(try_hotplug, (void *) f,
 					"core_ctl/%d", first_cpu);
-	set_user_nice(f->hotplug_thread, HOTPLUG_THREAD_NICE_VAL);
+	sched_setscheduler_nocheck(f->hotplug_thread, SCHED_FIFO, &param);
 
 	for_each_cpu(cpu, mask) {
 		state = &per_cpu(cpu_state, cpu);
