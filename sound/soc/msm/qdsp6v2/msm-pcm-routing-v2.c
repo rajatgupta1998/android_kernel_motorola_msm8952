@@ -4675,7 +4675,7 @@ static int spkr_prot_put_vi_rch_port(struct snd_kcontrol *kcontrol,
 }
 
 static int spkr_prot_get_vi_lch_port(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
+		struct snd_ctl_elem_value *ucontrol)
 {
 	pr_debug("%s\n", __func__);
 	return 0;

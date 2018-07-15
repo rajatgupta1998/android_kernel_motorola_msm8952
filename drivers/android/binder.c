@@ -1195,6 +1195,7 @@ static int binder_inc_ref(struct binder_ref *ref, int strong,
 static int binder_dec_ref(struct binder_ref **ptr_to_ref, int strong)
 {
 	struct binder_ref *ref = *ptr_to_ref;
+
 	if (strong) {
 		if (ref->strong == 0) {
 			binder_user_error("%d invalid dec strong, ref %d desc %d s %d w %d\n",
