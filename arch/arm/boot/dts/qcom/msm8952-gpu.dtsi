@@ -56,7 +56,7 @@
 
 		qcom,chipid = <0x04000510>;
 
-		qcom,initial-pwrlevel = <3>;
+		qcom,initial-pwrlevel = <5>;
 
 		qcom,idle-timeout = <80>; //msecs
 		qcom,strtstp-sleepwake;
@@ -171,9 +171,17 @@
 				qcom,bus-max = <7>;
 			};
 
-			/* XO */
 			qcom,gpu-pwrlevel@5 {
 				reg = <5>;
+				qcom,gpu-freq = <160000000>;
+				qcom,bus-freq = <3>;
+				qcom,bus-min = <2>;
+				qcom,bus-max = <4>;
+			};
+
+			/* XO */
+			qcom,gpu-pwrlevel@6 {
+				reg = <6>;
 				qcom,gpu-freq = <19200000>;
 				qcom,bus-freq = <0>;
 				qcom,bus-min = <0>;
