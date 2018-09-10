@@ -28,14 +28,10 @@
 #include "seq_clientmgr.h"
 
 /*
-
-   registration of client ports
-
+ * registration of client ports
  */
 
-
 /* 
-
 NOTE: the current implementation of the port structure as a linked list is
 not optimal for clients that have many ports. For sending messages to all
 subscribers of a port we first need to find the address of the port
@@ -52,7 +48,6 @@ dynamicly kmalloced. When a port is added or deleted we can simply allocate
 a new array, copy the corresponding pointers, and delete the old one. We
 then only need a pointer to this array, and an integer that tells us how
 much elements are in array.
-
 */
 
 /* return pointer to port structure - port is locked if found */
@@ -76,7 +71,6 @@ struct snd_seq_client_port *snd_seq_port_use_ptr(struct snd_seq_client *client,
 	read_unlock(&client->ports_lock);
 	return NULL;		/* not found */
 }
-
 
 /* search for the next port - port is locked if found */
 struct snd_seq_client_port *snd_seq_port_query_nearest(struct snd_seq_client *client,
@@ -108,7 +102,6 @@ struct snd_seq_client_port *snd_seq_port_query_nearest(struct snd_seq_client *cl
 	return found;
 }
 
-
 /* initialize snd_seq_port_subs_info */
 static void port_subs_info_init(struct snd_seq_port_subs_info *grp)
 {
@@ -121,7 +114,6 @@ static void port_subs_info_init(struct snd_seq_port_subs_info *grp)
 	grp->close = NULL;
 }
 
-
 /* create a port, port number is returned (-1 on failure);
  * the caller needs to unref the port via snd_seq_port_unlock() appropriately
  */
@@ -131,7 +123,7 @@ struct snd_seq_client_port *snd_seq_create_port(struct snd_seq_client *client,
 	unsigned long flags;
 	struct snd_seq_client_port *new_port, *p;
 	int num = -1;
-	
+
 	/* sanity check */
 	if (snd_BUG_ON(!client))
 		return NULL;
@@ -170,7 +162,7 @@ struct snd_seq_client_port *snd_seq_create_port(struct snd_seq_client *client,
 	list_add_tail(&new_port->list, &p->list);
 	client->num_ports++;
 	new_port->addr.port = num;	/* store the port number in the port */
-	sprintf(new_port->name, "port-%d", num);
+	snprintf(new_port->name, sizeof(new_port->name), "port-%d", num);
 	write_unlock_irqrestore(&client->ports_lock, flags);
 	mutex_unlock(&client->ports_mutex);
 
@@ -186,7 +178,6 @@ static int unsubscribe_port(struct snd_seq_client *client,
 			    struct snd_seq_client_port *port,
 			    struct snd_seq_port_subs_info *grp,
 			    struct snd_seq_port_subscribe *info, int send_ack);
-
 
 static struct snd_seq_client_port *get_client_port(struct snd_seq_addr *addr,
 						   struct snd_seq_client **cp)
@@ -280,7 +271,6 @@ static int port_delete(struct snd_seq_client *client,
 	kfree(port);
 	return 0;
 }
-
 
 /* delete a port with the given port id */
 int snd_seq_delete_port(struct snd_seq_client *client, int port)
@@ -405,8 +395,6 @@ int snd_seq_get_port_info(struct snd_seq_client_port * port,
 	return 0;
 }
 
-
-
 /*
  * call callback functions (if any):
  * the callbacks are invoked only when the first (for connection) or
@@ -419,7 +407,6 @@ int snd_seq_get_port_info(struct snd_seq_client_port * port,
  * If callback_all option is set, the callback function is invoked
  * at each connection/disconnection. 
  */
-
 static int subscribe_port(struct snd_seq_client *client,
 			  struct snd_seq_client_port *port,
 			  struct snd_seq_port_subs_info *grp,
@@ -464,8 +451,6 @@ static int unsubscribe_port(struct snd_seq_client *client,
 	module_put(port->owner);
 	return err;
 }
-
-
 
 /* check if both addresses are identical */
 static inline int addr_match(struct snd_seq_addr *r, struct snd_seq_addr *s)
@@ -637,7 +622,6 @@ int snd_seq_port_disconnect(struct snd_seq_client *connector,
 	kfree(subs);
 	return 0;
 }
-
 
 /* get matched subscriber */
 struct snd_seq_subscribers *snd_seq_port_get_subscription(struct snd_seq_port_subs_info *src_grp,
