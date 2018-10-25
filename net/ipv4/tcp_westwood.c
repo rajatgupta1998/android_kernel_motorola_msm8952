@@ -44,8 +44,8 @@ struct westwood {
 
 
 /* TCP Westwood functions and constants */
-int tcp_westwood_rtt_min __read_mostly = 55;
-int tcp_westwood_init_rtt __read_mostly = 1800;
+const int tcp_westwood_rtt_min = 55;
+const int tcp_westwood_init_rtt = 1800;
 
 /*
  * @tcp_westwood_create
