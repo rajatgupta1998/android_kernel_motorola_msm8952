@@ -1,0 +1,3 @@
+GCOV_PROFILE := y
+obj-$(CONFIG_MSMB_CAMERA_2016) += cpp/
+obj-$(CONFIG_MSMB_CAMERA_2016) += vpe/
