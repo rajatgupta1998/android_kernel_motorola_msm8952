@@ -19,4 +19,3 @@ header-y += msmb_generic_buf_mgr.h
 header-y += msmb_pproc.h
 header-y += msm_vpu.h
 header-y += msm_fd.h
-header-y += msm_camsensor_sdk.h
