@@ -22,7 +22,7 @@
 #define HANDLE_TO_IDX(handle) (handle & 0xFF)
 /* at how many frames to add frame skip pattern */
 #define BURST_SKIP_THRESHOLD              (16)
-#define ISP_SOF_DEBUG_COUNT 5
+#define ISP_SOF_DEBUG_COUNT 2
 
 static int msm_isp_update_dual_HW_ms_info_at_start(
 	struct vfe_device *vfe_dev,
@@ -40,7 +40,7 @@ int msm_isp_axi_create_stream(struct vfe_device *vfe_dev,
 	struct msm_vfe_axi_shared_data *axi_data,
 	struct msm_vfe_axi_stream_request_cmd *stream_cfg_cmd)
 {
-	int i = stream_cfg_cmd->stream_src;
+	uint32_t i = stream_cfg_cmd->stream_src;
 
 	if (i >= VFE_AXI_SRC_MAX) {
 		pr_err("%s:%d invalid stream_src %d\n", __func__, __LINE__,
@@ -529,7 +529,8 @@ void msm_isp_update_framedrop_reg(struct vfe_device *vfe_dev,
 
 		if (stream_info->runtime_framedrop_update &&
 			vfe_dev->axi_data.src_info[frame_src].frame_id > 0) {
-			stream_info->runtime_init_frame_drop--;
+			if(stream_info->runtime_init_frame_drop)
+				stream_info->runtime_init_frame_drop--;
 			if (stream_info->runtime_init_frame_drop == 0) {
 				stream_info->runtime_framedrop_update = 0;
 				msm_isp_cfg_framedrop_reg(vfe_dev, stream_info);
@@ -547,12 +548,13 @@ void msm_isp_update_framedrop_reg(struct vfe_device *vfe_dev,
 				(stream_info->framedrop_period + 1) + 1;
 			msm_isp_cfg_framedrop_reg(vfe_dev, stream_info);
 		} else {
-			if (stream_info->runtime_burst_frame_count > 0)
-				stream_info->runtime_burst_frame_count--;
 
 			if ((stream_info->runtime_burst_frame_count <
 				BURST_SKIP_THRESHOLD) &&
 				(stream_info->runtime_burst_frame_count >= 0)) {
+				if ((stream_info->stream_type == BURST_STREAM) &&
+					(!stream_info->controllable_output) &&
+					(stream_info->runtime_burst_frame_count == 0))
 				msm_isp_cfg_framedrop_reg(vfe_dev,
 					stream_info);
 			}
@@ -1123,7 +1125,8 @@ static int msm_isp_axi_stream_enable_cfg(
 	struct msm_vfe_axi_stream *stream_info,
 	uint32_t dual_vfe_sync)
 {
-	int i, enable_wm = 0, vfe_id = 0;
+	int i, vfe_id = 0;
+	uint8_t enable_wm = 0;
 	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
 	uint32_t stream_idx = HANDLE_TO_IDX(stream_info->stream_handle);
 	struct dual_vfe_resource *dual_vfe_res = NULL;
@@ -1162,7 +1165,7 @@ static int msm_isp_axi_stream_enable_cfg(
 			}
 			for (vfe_id = 0; vfe_id < MAX_VFE; vfe_id++) {
 				vfe_dev->hw_info->vfe_ops.axi_ops.
-				enable_wm(dual_vfe_res->vfe_dev[vfe_id],
+				enable_wm(dual_vfe_res->vfe_base[vfe_id],
 				dual_vfe_res->axi_data[vfe_id]->
 				stream_info[stream_idx].wm[i],
 				enable_wm);
@@ -1172,8 +1175,8 @@ static int msm_isp_axi_stream_enable_cfg(
 			stream_info->stream_src <= RDI_INTF_2) ||
 			!dual_vfe_sync) {
 			vfe_dev->hw_info->vfe_ops.axi_ops.
-			enable_wm(vfe_dev, stream_info->wm[i],
-				enable_wm);
+			enable_wm(vfe_dev->vfe_base, stream_info->wm[i],
+					enable_wm);
 		}
 		if (!enable_wm) {
 			/* Issue a reg update for Raw Snapshot Case
@@ -1437,16 +1440,18 @@ int msm_isp_print_ping_pong_address(struct vfe_device *vfe_dev)
 					pr_err("%s: buf NULL\n", __func__);
 					continue;
 				}
-				pr_err("%s: stream_id %x ping-pong %d plane %d start_addr %x addr_offset %x len %lx stride %d scanline %d\n",
+				pr_err("%s: stream_id %x ping-pong %d plane %d start_addr %lx addr_offset %x len %lx stride %d scanline %d\n",
 					__func__, stream_info->stream_id,
-					pingpong_bit, i,
-					(uint32_t)buf->mapped_info[i].paddr,
+					pingpong_bit, i, (unsigned long)
+					buf->mapped_info[i].paddr,
 					stream_info->
 						plane_cfg[i].plane_addr_offset,
 					buf->mapped_info[i].len,
-					stream_info->plane_cfg[i].output_stride,
 					stream_info->
-						plane_cfg[i].output_scan_lines);
+						plane_cfg[i].output_stride,
+					stream_info->
+						plane_cfg[i].output_scan_lines
+					);
 			}
 		}
 	}
@@ -1778,9 +1783,13 @@ static void msm_isp_process_done_buf(struct vfe_device *vfe_dev,
 				msm_isp_send_event(vfe_dev,
 				ISP_EVENT_BUF_DIVERT, &buf_event);
 		} else {
+		if (stream_info->stream_type == BURST_STREAM) {
 			ISP_DBG("%s: vfe_id %d send buf done buf-id %d bufq %x\n",
 				__func__, vfe_dev->pdev->id, buf->buf_idx,
 				buf->bufq_handle);
+			if (stream_info->runtime_burst_frame_count > 0)
+				stream_info->runtime_burst_frame_count--;
+			}
 			msm_isp_send_event(vfe_dev, ISP_EVENT_BUF_DONE,
 				&buf_event);
 			vfe_dev->buf_mgr->ops->buf_done(vfe_dev->buf_mgr,
@@ -3234,14 +3243,34 @@ int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg)
 			}
 			stream_info->output_format = update_info->output_format;
 			if (stream_info->state == ACTIVE) {
+				struct dual_vfe_resource *dual_vfe_res = NULL;
+				uint32_t stream_idx = HANDLE_TO_IDX(stream_info->stream_handle);
+
 				stream_info->state = PAUSE_PENDING;
 				msm_isp_axi_stream_enable_cfg(
 					vfe_dev, stream_info, 1);
-				stream_info->state = PAUSING;
-				atomic_set(&axi_data->
-					axi_cfg_update[SRC_TO_INTF(
-					stream_info->stream_src)],
-					UPDATE_REQUESTED);
+				if ((stream_info->stream_src < RDI_INTF_0) &&
+					vfe_dev->is_split && vfe_dev->pdev->id == ISP_VFE1) {
+					dual_vfe_res = vfe_dev->common_data->dual_vfe_res;
+					stream_info->state = PAUSING;
+					atomic_set(&axi_data->
+						axi_cfg_update[SRC_TO_INTF(
+						stream_info->stream_src)],
+						UPDATE_REQUESTED);
+					dual_vfe_res->axi_data[ISP_VFE0]->
+						stream_info[stream_idx].state = PAUSING;
+					atomic_set(&dual_vfe_res->axi_data[ISP_VFE0]->
+						axi_cfg_update[SRC_TO_INTF(
+						stream_info->stream_src)],
+						UPDATE_REQUESTED);
+				} else if ((stream_info->stream_src >= RDI_INTF_0) ||
+					!vfe_dev->is_split) {
+					stream_info->state = PAUSING;
+					atomic_set(&axi_data->
+						axi_cfg_update[SRC_TO_INTF(
+						stream_info->stream_src)],
+						UPDATE_REQUESTED);
+				}
 			} else {
 				for (j = 0; j < stream_info->num_planes; j++)
 					vfe_dev->hw_info->vfe_ops.axi_ops.
@@ -3448,7 +3477,8 @@ void msm_isp_axi_disable_all_wm(struct vfe_device *vfe_dev)
 		stream_info = &axi_data->stream_info[i];
 
 		for (j = 0; j < stream_info->num_planes; j++)
-			vfe_dev->hw_info->vfe_ops.axi_ops.enable_wm(vfe_dev,
+			vfe_dev->hw_info->vfe_ops.axi_ops.enable_wm(
+				vfe_dev->vfe_base,
 				stream_info->wm[j], 0);
 	}
 }
