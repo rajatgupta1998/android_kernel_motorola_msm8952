@@ -26,5 +26,4 @@ header-y += msmb_pproc.h
 header-y += msmb_pproc_2016.h
 header-y += msm_vpu.h
 header-y += msm_fd.h
-header-y += msm_camsensor_sdk.h
 header-y += msm_camsensor_sdk_2016.h
