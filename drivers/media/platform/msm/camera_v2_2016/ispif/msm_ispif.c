@@ -20,7 +20,7 @@
 #include <linux/gpio.h>
 #include <linux/iopoll.h>
 #include <linux/compat.h>
-#include <media/msmb_isp.h>
+#include <media/msmb_isp_2016.h>
 
 #include "msm_ispif.h"
 #include "msm.h"

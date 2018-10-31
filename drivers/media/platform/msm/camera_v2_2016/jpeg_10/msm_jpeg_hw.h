@@ -13,7 +13,7 @@
 #ifndef MSM_JPEG_HW_H
 #define MSM_JPEG_HW_H
 
-#include <media/msm_jpeg.h>
+#include <media/msm_jpeg_2016.h>
 #include "msm_jpeg_hw_reg.h"
 #include <linux/ion.h>
 #include <linux/msm_iommu_domains.h>
