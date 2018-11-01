@@ -19,7 +19,7 @@
 #include <linux/platform_device.h>
 #include <media/v4l2-subdev.h>
 #include <media/msmb_camera_2016.h>
-#include <uapi/media/msmb_generic_buf_mgr_2016.h>
+#include <media/msmb_generic_buf_mgr_2016.h>
 
 #include "msm.h"
 #include "msm_sd.h"

@@ -34,7 +34,7 @@
 #include <media/v4l2-event.h>
 #include <media/v4l2-ioctl.h>
 #include <media/msmb_camera_2016.h>
-#include <uapi/media/msmb_generic_buf_mgr_2016.h>
+#include <media/msmb_generic_buf_mgr_2016.h>
 #include <media/msmb_pproc_2016.h>
 #include <linux/clk/msm-clk-provider.h>
 #include "msm_cpp.h"
