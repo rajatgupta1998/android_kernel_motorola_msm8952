@@ -9,7 +9,7 @@
 #endif
 #include <linux/videodev2.h>
 #include <linux/types.h>
-#include <media/msmb_generic_buf_mgr.h>
+#include <media/msmb_generic_buf_mgr_2016.h>
 
 /* Should be same as VIDEO_MAX_PLANES in videodev2.h */
 #define MAX_PLANES VIDEO_MAX_PLANES
