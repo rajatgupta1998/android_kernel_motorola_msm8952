@@ -33,6 +33,8 @@
 #define DEVICE_CLASS_NAME "rmidev"
 #define DEV_NUMBER 1
 #define REG_ADDR_LIMIT 0xFFFF
+#define MAX_READ_WRITE_SIZE 8096
+#define MIN_READ_WRITE_BUF_SIZE 256
 
 static ssize_t rmidev_sysfs_data_show(struct file *data_file,
 		struct kobject *kobj, struct bin_attribute *attributes,
@@ -74,13 +76,14 @@ struct rmidev_data {
 	struct class *device_class;
 	struct mutex file_mutex;
 	struct rmidev_handle *rmi_dev;
-	struct temp_buffer data_buf;
+	unsigned char *tmpbuf;
+	size_t tmpbuf_size;
 };
 
 static struct bin_attribute attr_data = {
 	.attr = {
 		.name = "data",
-		.mode = (S_IRUGO | S_IWUSR | S_IWGRP),
+		.mode = (S_IRUGO | S_IWUSR),
 	},
 	.size = 0,
 	.read = rmidev_sysfs_data_show,
@@ -88,16 +91,16 @@ static struct bin_attribute attr_data = {
 };
 
 static struct device_attribute attrs[] = {
-	__ATTR(open, S_IWUSR | S_IWGRP,
+	__ATTR(open, S_IWUSR,
 			synaptics_rmi4_show_error,
 			rmidev_sysfs_open_store),
-	__ATTR(release, S_IWUSR | S_IWGRP,
+	__ATTR(release, S_IWUSR,
 			synaptics_rmi4_show_error,
 			rmidev_sysfs_release_store),
-	__ATTR(address, S_IWUSR | S_IWGRP,
+	__ATTR(address, S_IWUSR,
 			synaptics_rmi4_show_error,
 			rmidev_sysfs_address_store),
-	__ATTR(length, S_IWUSR | S_IWGRP,
+	__ATTR(length, S_IWUSR,
 			synaptics_rmi4_show_error,
 			rmidev_sysfs_length_store),
 	__ATTR(attn_state, S_IRUSR | S_IRGRP,
@@ -315,6 +318,32 @@ clean_up:
 	return newpos;
 }
 
+static int alloc_tmpbuf(struct file *filp, size_t count)
+{
+	struct rmidev_data *dev_data = filp->private_data;
+
+	if (dev_data->tmpbuf_size != 0)	{
+		kfree(dev_data->tmpbuf);
+		dev_data->tmpbuf = NULL;
+		dev_data->tmpbuf_size = 0;
+	}
+
+	if (count > MAX_READ_WRITE_SIZE) {
+		pr_err("%s: Max buffer size exceeded\n", __func__);
+		return 1;
+	}
+
+	if (count < MIN_READ_WRITE_BUF_SIZE)
+		count = MIN_READ_WRITE_BUF_SIZE;
+
+	dev_data->tmpbuf = kzalloc(count, GFP_KERNEL);
+	if (!dev_data->tmpbuf)
+		return 1;
+
+	dev_data->tmpbuf_size = count;
+	return 0;
+}
+
 /*
  * rmidev_read: - use to read data from rmi device
  *
@@ -328,35 +357,41 @@ static ssize_t rmidev_read(struct file *filp, char __user *buf,
 {
 	ssize_t retval;
 	struct rmidev_data *dev_data = filp->private_data;
-	struct temp_buffer *tb;
 
 	if (IS_ERR(dev_data)) {
 		pr_err("%s: Pointer of char device data is invalid", __func__);
 		return -EBADF;
 	}
 
-	if (count == 0)
-		return 0;
+	mutex_lock(&(dev_data->file_mutex));
 
 	if (count > (REG_ADDR_LIMIT - *f_pos))
 		count = REG_ADDR_LIMIT - *f_pos;
 
-	tb = &dev_data->data_buf;
-	mutex_lock(&(dev_data->file_mutex));
 
-	if (tb->buf_size < count && alloc_buffer(tb, count) != 0) {
+	if (count == 0) {
+		retval = 0;
+		goto clean_up;
+	}
+
+	if (*f_pos > REG_ADDR_LIMIT) {
+		retval = -EFAULT;
+		goto clean_up;
+	}
+
+	if (dev_data->tmpbuf_size < count && alloc_tmpbuf(filp, count) != 0) {
 		retval = -ENOMEM;
 		goto clean_up;
 	}
 
 	retval = rmidev->fn_ptr->read(rmidev->rmi4_data,
 			*f_pos,
-			tb->buf,
+			dev_data->tmpbuf,
 			count);
 	if (retval < 0)
 		goto clean_up;
 
-	if (copy_to_user(buf, tb->buf, count))
+	if (copy_to_user(buf, dev_data->tmpbuf, count))
 		retval = -EFAULT;
 	else
 		*f_pos += retval;
@@ -379,35 +414,40 @@ static ssize_t rmidev_write(struct file *filp, const char __user *buf,
 {
 	ssize_t retval;
 	struct rmidev_data *dev_data = filp->private_data;
-	struct temp_buffer *tb;
 
 	if (IS_ERR(dev_data)) {
 		pr_err("%s: Pointer of char device data is invalid", __func__);
 		return -EBADF;
 	}
 
-	if (count == 0)
-		return 0;
+	mutex_lock(&(dev_data->file_mutex));
 
 	if (count > (REG_ADDR_LIMIT - *f_pos))
 		count = REG_ADDR_LIMIT - *f_pos;
 
-	tb = &dev_data->data_buf;
-	mutex_lock(&(dev_data->file_mutex));
+	if (count == 0) {
+		retval = 0;
+		goto clean_up;
+	}
 
-	if (tb->buf_size < count && alloc_buffer(tb, count) != 0) {
+	if (*f_pos > REG_ADDR_LIMIT) {
+		retval = -EFAULT;
+		goto clean_up;
+	}
+
+	if (dev_data->tmpbuf_size < count && alloc_tmpbuf(filp, count) != 0) {
 		retval = -ENOMEM;
 		goto clean_up;
 	}
 
-	if (copy_from_user(tb->buf, buf, count)) {
+	if (copy_from_user(dev_data->tmpbuf, buf, count)) {
 		retval = -EFAULT;
 		goto clean_up;
 	}
 
 	retval = rmidev->fn_ptr->write(rmidev->rmi4_data,
 			*f_pos,
-			tb->buf,
+			dev_data->tmpbuf,
 			count);
 	if (retval >= 0)
 		*f_pos += retval;
@@ -464,6 +504,12 @@ static int rmidev_release(struct inode *inp, struct file *filp)
 		return -EACCES;
 
 	mutex_lock(&(dev_data->file_mutex));
+
+	if (dev_data->tmpbuf_size != 0) {
+		kfree(dev_data->tmpbuf);
+		dev_data->tmpbuf = NULL;
+		dev_data->tmpbuf_size = 0;
+	}
 
 	dev_data->ref_count--;
 	if (dev_data->ref_count < 0)
