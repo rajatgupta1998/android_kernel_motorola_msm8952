@@ -287,7 +287,7 @@ static int mdss_dsi_panel_set_param(struct mdss_panel_data *pdata,
 				__func__, val, id);
 		return -EINVAL;
 	}
-	mdss_dsi_panel_cmds_send(ctrl, &cmds[val]);
+	mdss_dsi_panel_cmds_send(ctrl, &cmds[val], CMD_REQ_COMMIT);
 	return 0;
 }
 
