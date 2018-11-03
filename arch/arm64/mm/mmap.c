@@ -59,6 +59,7 @@ static unsigned long mmap_rnd(void)
 #endif
 			rnd = get_random_long() & ((1UL << mmap_rnd_bits) - 1);
 	}
+
 	return rnd << PAGE_SHIFT;
 }
 

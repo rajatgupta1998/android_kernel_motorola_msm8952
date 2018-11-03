@@ -954,8 +954,10 @@ static int pm8921_remove(struct platform_device *pdev)
 	if (pmic) {
 		if (pmic->dev)
 			mfd_remove_devices(pmic->dev);
-		if (pmic->irq_chip)
+		if (pmic->irq_chip) {
 			pm8xxx_irq_exit(pmic->irq_chip);
+			pmic->irq_chip = NULL;
+		}
 		if (pmic->mfd_regulators) {
 			for (i = 0; i < ARRAY_SIZE(regulator_data); i++)
 				mutex_destroy(&regulator_data[i].pc_lock);
