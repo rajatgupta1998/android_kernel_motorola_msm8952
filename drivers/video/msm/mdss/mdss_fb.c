@@ -2976,8 +2976,9 @@ static int mdss_fb_release_all(struct fb_info *info, bool release_all)
 			pr_err("can't turn off fb%d! rc=%d current process=%s pid=%d known pid=%d\n",
 			      mfd->index, ret, task->comm, current->tgid, pid);
 			return ret;
-		} else
+		} else {
 			fb_notifier_call_chain(FB_EVENT_BLANK, &event);
+		}
 
 		if (mfd->fb_ion_handle)
 			mdss_fb_free_fb_ion_memory(mfd);
