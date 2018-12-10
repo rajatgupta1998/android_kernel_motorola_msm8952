@@ -560,6 +560,7 @@ int pil_mss_reset_load_mba(struct pil_desc *pil)
 		goto err_mba_data;
 	}
 	count = fw->size;
+
 	if (count <= SZ_1M) {
 		/* Ensures memcpy is done for max 1MB fw size */
 		memcpy(mba_virt, data, count);
@@ -616,7 +617,7 @@ int pil_mss_reset_load_mba(struct pil_desc *pil)
 
 err_mss_reset:
 	if (drv->dp_virt)
-		dma_free_attrs(&md->mba_mem_dev,  dp_fw->size, drv->dp_virt,
+		dma_free_attrs(&md->mba_mem_dev, dp_fw->size, drv->dp_virt,
 				drv->dp_phys, &md->attrs_dma);
 err_invalid_fw:
 	if (dp_fw)

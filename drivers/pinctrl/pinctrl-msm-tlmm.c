@@ -15,6 +15,7 @@
 #include <linux/err.h>
 #include <linux/interrupt.h>
 #include <linux/irqchip/chained_irq.h>
+#include <linux/irqchip/qpnp-int.h>
 #include <linux/irqdomain.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -167,6 +168,23 @@
 #define TLMMV4_QDSD_CONFIG_WIDTH		0x5
 #define TLMMV4_QDSD_DRV_MASK			0x7
 
+/**
+ * extract GPIO pin from bit-field used for gpio_tlmm_config
+ */
+#define GPIO_PIN(gpio_cfg)    (((gpio_cfg) >>  4) & 0x3ff)
+#define GPIO_FUNC(gpio_cfg)   (((gpio_cfg) >>  0) & 0xf)
+#define GPIO_DIR(gpio_cfg)    (((gpio_cfg) >> 14) & 0x1)
+#define GPIO_PULL(gpio_cfg)   (((gpio_cfg) >> 15) & 0x3)
+#define GPIO_DRVSTR(gpio_cfg) (((gpio_cfg) >> 17) & 0xf)
+
+#define GPIO_CFG(gpio, func, dir, pull, drvstr) \
+	((((gpio) & 0x3FF) << 4)        |	  \
+	 ((func) & 0xf)                  |	  \
+	 (((dir) & 0x1) << 14)           |	  \
+	 (((pull) & 0x3) << 15)          |	  \
+	 (((drvstr) & 0xF) << 17))
+
+static struct msm_pintype_info *tlmm_pininfo_gp;
 struct msm_sdc_regs {
 	unsigned long pull_mask;
 	unsigned long pull_shft;
@@ -647,6 +665,92 @@ static void msm_tlmm_gp_set(struct gpio_chip *gc, unsigned offset, int val)
 	writel_relaxed(val ? BIT(GPIO_OUT_BIT) : 0, inout_reg);
 }
 
+int tlmm_get_inout(unsigned gpio)
+{
+	void __iomem *inout_reg = TLMM_GP_INOUT(tlmm_pininfo_gp, gpio);
+
+	if (tlmm_pininfo_gp == NULL)
+		return -EINVAL;
+	if (gpio >= tlmm_pininfo_gp->num_pins)
+		return -EINVAL;
+	return readl_relaxed(inout_reg) & BIT(GPIO_IN_BIT);
+}
+
+int tlmm_set_inout(unsigned gpio, unsigned val)
+{
+	void __iomem *inout_reg = TLMM_GP_INOUT(tlmm_pininfo_gp, gpio);
+
+	if (tlmm_pininfo_gp == NULL)
+		return -EINVAL;
+	if (gpio >= tlmm_pininfo_gp->num_pins)
+		return -EINVAL;
+	writel_relaxed(val ? BIT(GPIO_OUT_BIT) : 0, inout_reg);
+
+	return 0;
+}
+
+int tlmm_get_config(unsigned gpio, unsigned *cfg)
+{
+	unsigned flags;
+
+	if (tlmm_pininfo_gp == NULL)
+		return -EINVAL;
+	if (gpio >= tlmm_pininfo_gp->num_pins)
+		return -EINVAL;
+
+	flags = readl_relaxed(TLMM_GP_CFG(tlmm_pininfo_gp, gpio));
+	pr_debug("%s(), %d, flags=%x\n", __func__, __LINE__, flags);
+	*cfg = GPIO_CFG(gpio, (flags >> TLMM_GP_FUNC_SHFT) & 0xf,
+		(flags >> TLMM_GP_DIR_SHFT) & 0x1, flags & 0x3,
+		(flags >> TLMM_GP_DRV_SHFT) & 0x7);
+
+	return 0;
+}
+
+int tlmm_set_config(unsigned config)
+{
+	unsigned int flags;
+	unsigned gpio = GPIO_PIN(config);
+	void __iomem *cfg_reg = TLMM_GP_CFG(tlmm_pininfo_gp, gpio);
+
+	if (tlmm_pininfo_gp == NULL)
+		return -EINVAL;
+	if (gpio >= tlmm_pininfo_gp->num_pins)
+		return -EINVAL;
+
+	pr_debug("%s(), %d,gpio=%d\n", __func__, __LINE__, gpio);
+
+	config = (config & ~0x40000000);
+	flags = readl_relaxed(cfg_reg);
+	pr_debug("%s(), %d, flags=%x\n", __func__, __LINE__, flags);
+
+	flags = ((GPIO_DIR(config) & TLMM_GP_DIR_MASK) << TLMM_GP_DIR_SHFT) |
+		((GPIO_DRVSTR(config) & TLMM_GP_DRV_MASK) << TLMM_GP_DRV_SHFT) |
+		((GPIO_FUNC(config) & TLMM_GP_FUNC_MASK) << TLMM_GP_FUNC_SHFT) |
+		((GPIO_PULL(config) & TLMM_GP_PULL_MASK));
+
+	pr_debug("%s(), %d, flags=%x\n", __func__, __LINE__, flags);
+	writel_relaxed(flags, cfg_reg);
+
+	return 0;
+}
+
+int tlmm_set_config_pullup(unsigned gpio, unsigned enable)
+{
+	int res;
+	unsigned cfg;
+	tlmm_get_config(gpio, &cfg);
+	cfg &= ~(TLMM_GP_PULL_MASK<<15);
+
+	if (enable) {
+		res = tlmm_set_config(cfg | (TLMM_PULL_UP<<15));
+	} else {
+		res = tlmm_set_config(cfg | (TLMM_NO_PULL<<15));
+	}
+
+	return res;
+}
+
 static int msm_tlmm_gp_dir_in(struct gpio_chip *gc, unsigned offset)
 {
 	unsigned int val;
@@ -949,6 +1053,43 @@ static int msm_tlmm_gp_irq_suspend(void)
 	return 0;
 }
 
+/* Show gpio's irq when resume */
+void msm_gpio_show_resume_irq(void)
+{
+	unsigned long irq_flags;
+	unsigned long i;
+	unsigned int irq = 0;
+	int intstat;
+	struct msm_tlmm_irq_chip *ic = &msm_tlmm_gp_irq;
+
+	if (!qpnpint_show_resume_irq())
+		return;
+
+	spin_lock_irqsave(&ic->irq_lock, irq_flags);
+	for_each_set_bit(i, ic->wake_irqs, ic->num_irqs) {
+		intstat = msm_tlmm_get_intr_status(ic, i);
+		if (intstat) {
+			struct irq_desc *desc;
+			const char *name = "null";
+			struct msm_pintype_info *pinfo = ic_to_pintype(ic);
+			struct gpio_chip *gc = pintype_get_gc(pinfo);
+
+			irq = msm_tlmm_gp_to_irq(gc, i);
+			if (!irq)
+				break;
+			desc = irq_to_desc(irq);
+			if (desc == NULL)
+				name = "stray irq";
+			else if (desc->action && desc->action->name)
+				name = desc->action->name;
+
+			pr_warn("%s: %d(gpio=%ld) triggered %s\n",
+					__func__, irq, i, name);
+		}
+	}
+	spin_unlock_irqrestore(&ic->irq_lock, irq_flags);
+}
+
 static void msm_tlmm_gp_irq_resume(void)
 {
 	unsigned long irq_flags;
@@ -956,6 +1097,8 @@ static void msm_tlmm_gp_irq_resume(void)
 	struct msm_tlmm_irq_chip *ic = &msm_tlmm_gp_irq;
 	int num_irqs = ic->num_irqs;
 
+	/* Show gpio's irq when resume */
+	msm_gpio_show_resume_irq();
 	spin_lock_irqsave(&ic->irq_lock, irq_flags);
 	for_each_set_bit(i, ic->wake_irqs, num_irqs)
 		msm_tlmm_set_intr_cfg_enable(ic, i, 0);
@@ -1202,6 +1345,9 @@ static int msm_tlmm_probe(struct platform_device *pdev)
 		tlmm_pininfo[i].pintype_data = pintype_data[i];
 	tlmm_desc->pintypes = tlmm_pininfo;
 	tlmm_desc->num_pintypes = ARRAY_SIZE(tlmm_pininfo);
+	/* Add sysfs for gpio's debug */
+	tlmm_pininfo_gp = &tlmm_pininfo[MSM_PINTYPE_GP];
+	pr_debug("%s(), tlmm_pininfo_gp=%p\n", __func__, tlmm_pininfo_gp);
 	return msm_pinctrl_probe(pdev, tlmm_desc);
 }
 

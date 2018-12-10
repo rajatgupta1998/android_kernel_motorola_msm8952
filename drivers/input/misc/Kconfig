@@ -862,6 +862,22 @@ config SENSORS_ISL29044A
 	depends on I2C
 	help
 	 This option enables support for the INTERSIL ISL29044A P/L sensor.
+config STMVL53L0
+	tristate "STMVL53L0 support"
+	help
+	laser sensor driver.
+
+config EPL8802
+	tristate "EPL8802 support"
+	help
+	proximity sensor driver.
+
+config SENSORS_FPC_1020
+	tristate "fpc fingerprint sensor"
+	default n
+	help
+	 Say Y here if you wish to include support for finger print sensor.
+	 If unsure, say N.
 
 endif
 

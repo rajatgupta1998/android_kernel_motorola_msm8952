@@ -1987,10 +1987,10 @@ static int qseecom_load_app(struct qseecom_dev_handle *data, void __user *argp)
 	struct qseecom_command_scm_resp resp;
 	struct qseecom_check_app_ireq req;
 	struct qseecom_load_app_ireq load_req;
+	bool first_time = false;
 	struct qseecom_load_app_64bit_ireq load_req_64bit;
 	void *cmd_buf = NULL;
 	size_t cmd_len;
-	bool first_time = false;
 
 	/* Copy the relevant information needed for loading the image */
 	if (copy_from_user(&load_img_req,

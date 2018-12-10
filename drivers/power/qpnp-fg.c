@@ -209,6 +209,7 @@ enum fg_mem_data_index {
 	FG_DATA_CC_CHARGE,
 	FG_DATA_VINT_ERR,
 	FG_DATA_CPRED_VOLTAGE,
+	FG_DATA_CC_COUNTER,
 	/* values below this only gets read once per profile reload */
 	FG_DATA_BATT_ID,
 	FG_DATA_BATT_ID_INFO,
@@ -262,6 +263,7 @@ static struct fg_mem_data fg_data[FG_DATA_MAX] = {
 	DATA(CC_CHARGE,       0x570,   0,      4,     -EINVAL),
 	DATA(VINT_ERR,        0x560,   0,      4,     -EINVAL),
 	DATA(CPRED_VOLTAGE,   0x540,   0,      2,     -EINVAL),
+	DATA(CC_COUNTER,      0x5BC,   3,      4,     -EINVAL),
 	DATA(BATT_ID,         0x594,   1,      1,     -EINVAL),
 	DATA(BATT_ID_INFO,    0x594,   3,      1,     -EINVAL),
 };
@@ -1924,6 +1926,39 @@ static int64_t twos_compliment_extend(int64_t val, int nbytes)
 	return val;
 }
 
+#define CC_SOC_MAGNITUDE_MASK	0x1FFFFFFF
+#define CC_SOC_NEGATIVE_BIT	BIT(29)
+#define FULL_PERCENT_28BIT	0xFFFFFFF
+#define FULL_RESOLUTION		1000000
+static int fg_get_cc_uah(struct fg_chip *chip, u8 *reg, int64_t *cc_uah)
+{
+	int rc = -EINVAL;
+	int64_t cc_pc_val, cc_soc_pc;
+	unsigned int temp, magnitude;
+
+	if (!reg)
+		goto fail;
+
+	temp = reg[3] << 24 | reg[2] << 16 | reg[1] << 8 | reg[0];
+	magnitude = temp & CC_SOC_MAGNITUDE_MASK;
+	if (temp & CC_SOC_NEGATIVE_BIT)
+		cc_pc_val = -1 * (~magnitude + 1);
+	else
+		cc_pc_val = magnitude;
+
+
+	cc_soc_pc = div64_s64(cc_pc_val * 100 * FULL_RESOLUTION,
+			      FULL_PERCENT_28BIT);
+
+	*cc_uah = div64_s64(chip->nom_cap_uah * cc_soc_pc,
+			    100 * FULL_RESOLUTION);
+
+	return 0;
+
+fail:
+	return rc;
+}
+
 #define LSB_24B_NUMRTR		596046
 #define LSB_24B_DENMTR		1000000
 #define LSB_16B_NUMRTR		152587
@@ -1932,7 +1967,6 @@ static int64_t twos_compliment_extend(int64_t val, int nbytes)
 #define TEMP_LSB_16B	625
 #define DECIKELVIN	2730
 #define SRAM_PERIOD_NO_ID_UPDATE_MS	100
-#define FULL_PERCENT_28BIT		0xFFFFFFF
 static void update_sram_data(struct fg_chip *chip, int *resched_ms)
 {
 	int i, j, rc = 0;
@@ -1998,6 +2032,13 @@ static void update_sram_data(struct fg_chip *chip, int *resched_ms)
 			temp = twos_compliment_extend(temp, fg_data[i].len);
 			fg_data[i].value = div64_s64(temp * chip->nom_cap_uah,
 					FULL_PERCENT_3B);
+			break;
+		case FG_DATA_CC_COUNTER:
+			if (chip->wa_flag & USE_CC_SOC_REG) {
+				fg_get_cc_uah(chip, &reg[0], &temp);
+				fg_data[i].value = temp;
+			} else
+				fg_data[i].value = 0;
 			break;
 		};
 
@@ -2546,6 +2587,7 @@ static enum power_supply_property fg_power_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_NOW_RAW,
 	POWER_SUPPLY_PROP_CHARGE_NOW_ERROR,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_TEMP,
@@ -2637,6 +2679,9 @@ static int fg_power_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_NOW_RAW:
 		val->intval = get_sram_prop_now(chip, FG_DATA_CC_CHARGE);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		val->intval = get_sram_prop_now(chip, FG_DATA_CC_COUNTER);
 		break;
 	default:
 		return -EINVAL;
@@ -2821,14 +2866,14 @@ fail:
 	if (chip->wa_flag & USE_CC_SOC_REG)
 		fg_relax(&chip->capacity_learning_wakeup_source);
 	mutex_unlock(&chip->learning_data.learning_lock);
+	if (chip->wa_flag & USE_CC_SOC_REG)
+		fg_relax(&chip->capacity_learning_wakeup_source);
 	return;
 
 }
 
 #define CC_SOC_BASE_REG		0x5BC
 #define CC_SOC_OFFSET		3
-#define CC_SOC_MAGNITUDE_MASK	0x1FFFFFFF
-#define CC_SOC_NEGATIVE_BIT	BIT(29)
 static int fg_get_cc_soc(struct fg_chip *chip, int *cc_soc)
 {
 	int rc;
@@ -2854,7 +2899,7 @@ static int fg_get_cc_soc(struct fg_chip *chip, int *cc_soc)
 static int fg_cap_learning_process_full_data(struct fg_chip *chip)
 {
 	int cc_pc_val, rc = -EINVAL;
-	unsigned int cc_soc_delta_pc;
+	int64_t cc_soc_delta_pc;
 	int64_t delta_cc_uah;
 
 	if (!chip->learning_data.active)
@@ -2872,19 +2917,19 @@ static int fg_cap_learning_process_full_data(struct fg_chip *chip)
 		goto fail;
 	}
 
-	cc_soc_delta_pc = DIV_ROUND_CLOSEST(
-			abs(cc_pc_val - chip->learning_data.init_cc_pc_val)
-			* 100, FULL_PERCENT_28BIT);
+	cc_soc_delta_pc = abs(cc_pc_val - chip->learning_data.init_cc_pc_val);
+	cc_soc_delta_pc *= 100;
+
+	cc_soc_delta_pc = div64_s64(cc_soc_delta_pc, FULL_PERCENT_28BIT);
 
 	delta_cc_uah = div64_s64(
-			chip->learning_data.learned_cc_uah * cc_soc_delta_pc,
+			chip->nom_cap_uah * cc_soc_delta_pc,
 			100);
 	chip->learning_data.cc_uah = delta_cc_uah + chip->learning_data.cc_uah;
 
-	if (fg_debug_mask & FG_AGING)
-		pr_info("current cc_soc=%d cc_soc_pc=%d total_cc_uah = %lld\n",
-				cc_pc_val, cc_soc_delta_pc,
-				chip->learning_data.cc_uah);
+	pr_info("current cc_soc=%d cc_soc_pc=%lld total_cc_uah = %lld delta_cc_uah = %lld\n",
+		cc_pc_val, cc_soc_delta_pc,
+		chip->learning_data.cc_uah, delta_cc_uah);
 
 	return 0;
 
@@ -2986,7 +3031,7 @@ static void fg_cap_learning_post_process(struct fg_chip *chip)
 {
 	int64_t max_inc_val, min_dec_val, old_cap;
 
-	max_inc_val = chip->learning_data.learned_cc_uah
+	max_inc_val = chip->nom_cap_uah
 			* (1000 + chip->learning_data.max_increment);
 	do_div(max_inc_val, 1000);
 
@@ -3004,10 +3049,9 @@ static void fg_cap_learning_post_process(struct fg_chip *chip)
 			chip->learning_data.cc_uah;
 
 	fg_cap_learning_save_data(chip);
-	if (fg_debug_mask & FG_AGING)
-		pr_info("final cc_uah = %lld, learned capacity %lld -> %lld uah\n",
-				chip->learning_data.cc_uah,
-				old_cap, chip->learning_data.learned_cc_uah);
+	pr_info("final cc_uah = %lld, learned capacity %lld -> %lld uah\n",
+		chip->learning_data.cc_uah,
+		old_cap, chip->learning_data.learned_cc_uah);
 }
 
 static int get_vbat_est_diff(struct fg_chip *chip)
@@ -3087,8 +3131,7 @@ static int fg_cap_learning_check(struct fg_chip *chip)
 
 			chip->learning_data.init_cc_pc_val = cc_pc_val;
 			chip->learning_data.active = true;
-			if (fg_debug_mask & FG_AGING)
-				pr_info("SW_CC_SOC based learning init_CC_SOC=%d\n",
+			pr_info("SW_CC_SOC based learning init_CC_SOC=%d\n",
 					chip->learning_data.init_cc_pc_val);
 		} else {
 			rc = fg_mem_masked_write(chip, CBITS_INPUT_FILTER_REG,
@@ -3861,7 +3904,7 @@ static irqreturn_t fg_soc_irq_handler(int irq, void *_chip)
 	return IRQ_HANDLED;
 }
 
-#define FG_EMPTY_DEBOUNCE_MS	1500
+#define FG_EMPTY_DEBOUNCE_MS	10
 static irqreturn_t fg_empty_soc_irq_handler(int irq, void *_chip)
 {
 	struct fg_chip *chip = _chip;
@@ -3875,14 +3918,16 @@ static irqreturn_t fg_empty_soc_irq_handler(int irq, void *_chip)
 		goto done;
 	}
 
-	if (fg_debug_mask & FG_IRQS)
-		pr_info("triggered 0x%x\n", soc_rt_sts);
-	if (fg_is_batt_empty(chip)) {
+	pr_info("triggered 0x%x\n", soc_rt_sts);
+
+	if (soc_rt_sts & SOC_EMPTY) {
+		chip->soc_empty = true;
 		fg_stay_awake(&chip->empty_check_wakeup_source);
 		schedule_delayed_work(&chip->check_empty_work,
 			msecs_to_jiffies(FG_EMPTY_DEBOUNCE_MS));
 	} else {
 		chip->soc_empty = false;
+		fg_relax(&chip->empty_check_wakeup_source);
 	}
 
 done:
@@ -4230,6 +4275,89 @@ static void update_cc_cv_setpoint(struct fg_chip *chip)
 			tmp[0], tmp[1], CC_CV_SETPOINT_REG);
 }
 
+static const char *fg_get_mmi_battid(void)
+{
+	struct device_node *np = of_find_node_by_path("/chosen");
+	const char *battsn_buf;
+	int retval;
+
+	battsn_buf = NULL;
+
+	if (np)
+		retval = of_property_read_string(np, "mmi,battid",
+						 &battsn_buf);
+	else
+		return NULL;
+
+	if ((retval == -EINVAL) || !battsn_buf) {
+		pr_err("Battsn unused\n");
+		of_node_put(np);
+		return NULL;
+
+	} else
+		pr_err("Battsn = %s\n", battsn_buf);
+
+	of_node_put(np);
+
+	return battsn_buf;
+}
+
+static struct device_node *fg_get_serialnumber(struct fg_chip *chip,
+					       struct device_node *np)
+{
+	struct device_node *node, *df_node, *sn_node;
+	const char *sn_buf, *df_sn, *dev_sn;
+	int rc;
+
+	if (!np)
+		return NULL;
+
+	dev_sn = NULL;
+	df_sn = NULL;
+	sn_buf = NULL;
+	df_node = NULL;
+	sn_node = NULL;
+
+	dev_sn = fg_get_mmi_battid();
+
+	rc = of_property_read_string(np, "df-serialnum",
+				     &df_sn);
+	if (rc)
+		dev_warn(chip->dev, "No Default Serial Number defined");
+	else if (df_sn)
+		dev_warn(chip->dev, "Default Serial Number %s", df_sn);
+
+	for_each_child_of_node(np, node) {
+		rc = of_property_read_string(node, "serialnum",
+					     &sn_buf);
+		if (!rc && sn_buf) {
+			if (dev_sn)
+				if (strnstr(dev_sn, sn_buf, 32))
+					sn_node = node;
+			if (df_sn)
+				if (strnstr(df_sn, sn_buf, 32))
+					df_node = node;
+		}
+	}
+
+	if (sn_node) {
+		node = sn_node;
+		df_node = NULL;
+		dev_warn(chip->dev, "Battery Match Found using %s",
+			 sn_node->name);
+	} else if (df_node) {
+		node = df_node;
+		sn_node = NULL;
+		dev_warn(chip->dev, "Battery Match Found using default %s",
+			 df_node->name);
+	} else {
+		dev_warn(chip->dev, "No Battery Match Found!");
+		return NULL;
+	}
+
+	return node;
+}
+
 #define LOW_LATENCY			BIT(6)
 #define BATT_PROFILE_OFFSET		0x4C0
 #define PROFILE_INTEGRITY_REG		0x53C
@@ -4424,13 +4552,18 @@ wait:
 		goto no_profile;
 	}
 
-	profile_node = of_batterydata_get_best_profile(batt_node, "bms",
-							fg_batt_type);
+	profile_node = fg_get_serialnumber(chip, batt_node);
+
 	if (!profile_node) {
-		pr_err("couldn't find profile handle\n");
-		old_batt_type = default_batt_type;
-		rc = -ENODATA;
-		goto fail;
+		profile_node = of_batterydata_get_best_profile(batt_node,
+							       "bms",
+							       fg_batt_type);
+		if (!profile_node) {
+			pr_err("couldn't find profile handle\n");
+			old_batt_type = default_batt_type;
+			rc = -ENODATA;
+			goto fail;
+		}
 	}
 
 	/* read rslow compensation values if they're available */
@@ -4567,9 +4700,10 @@ wait:
 	if (fg_est_dump)
 		dump_sram(&chip->dump_sram);
 	if ((fg_debug_mask & FG_STATUS) && !vbat_in_range)
-		pr_info("Vbat out of range: v_current_pred: %d, v:%d\n",
+		pr_info("Vbat out of range: v_current_pred: %d, v:%d thres:%d\n",
 				fg_data[FG_DATA_CPRED_VOLTAGE].value,
-				fg_data[FG_DATA_VOLTAGE].value);
+			fg_data[FG_DATA_VOLTAGE].value,
+			settings[FG_MEM_VBAT_EST_DIFF].value * 1000);
 	if ((fg_debug_mask & FG_STATUS) && fg_is_batt_empty(chip))
 		pr_info("battery empty\n");
 	if ((fg_debug_mask & FG_STATUS) && !profiles_same)
@@ -4636,14 +4770,11 @@ static void check_empty_work(struct work_struct *work)
 				struct fg_chip,
 				check_empty_work.work);
 
-	if (fg_is_batt_empty(chip)) {
-		if (fg_debug_mask & FG_STATUS)
-			pr_info("EMPTY SOC high\n");
-		chip->soc_empty = true;
+	if (chip->soc_empty) {
+		pr_info("EMPTY SOC high\n");
 		if (chip->power_supply_registered)
 			power_supply_changed(&chip->bms_psy);
 	}
-	fg_relax(&chip->empty_check_wakeup_source);
 }
 
 static void batt_profile_init(struct work_struct *work)
@@ -4912,7 +5043,7 @@ static int fg_of_init(struct fg_chip *chip)
 				* FULL_SOC_RAW, FULL_CAPACITY);
 	OF_READ_SETTING(FG_MEM_RESUME_SOC, "resume-soc-raw", rc, 1);
 	OF_READ_SETTING(FG_MEM_IRQ_VOLT_EMPTY, "irq-volt-empty-mv", rc, 1);
-	OF_READ_SETTING(FG_MEM_VBAT_EST_DIFF, "vbat-estimate-diff-mv", rc, 1);
+	OF_READ_SETTING(FG_MEM_VBAT_EST_DIFF, "fg-vbat-estimate-diff-mv", rc, 1);
 	OF_READ_SETTING(FG_MEM_DELTA_SOC, "fg-delta-soc", rc, 1);
 	OF_READ_SETTING(FG_MEM_SOC_MAX, "fg-soc-max", rc, 1);
 	OF_READ_SETTING(FG_MEM_SOC_MIN, "fg-soc-min", rc, 1);

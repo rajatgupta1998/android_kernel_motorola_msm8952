@@ -1635,6 +1635,34 @@ config MEMTEST
 	        memtest=17, mean do 17 test patterns.
 	  If you are unsure how to answer this question, answer N.
 
+config SOFTLOCKUP_WATCHDOG_TEST
+       bool "To test softlockup watchdog"
+       depends on LOCKUP_DETECTOR && DEBUG_FS
+       default n
+       help
+         This option provides a kernel debugfs item that can be used
+         to test softlockup watchdog reset. This option is not useful
+         for distributions or general kernels, but only for kernel
+         developers working on architecture code for test purpose.
+
+         Say N if you are unsure.
+
+config LOCKUP_IPI_CALL_WDT
+       bool "Trigger Watchdog Reset when Softlockup on IPI Call"
+       depends on LOCKUP_DETECTOR
+       help
+         Say Y here to enable the kernel to trigger watchdog reset when it
+         detects softlockup happens during current cpu is waiting for ipi replying
+         from other CPUs.
+
+         Original softlockup logs for ipi call hang issue can't provide
+         the backtrace on other CPUs. Since some machine may provide
+         ramdump when watchdog happens, we can leverage it to find out the
+         the other cpus' backtrace by initiating a watchdog reset
+         when this kind of softlockup occurs.
+
+         Say N if unsure.
+
 source "samples/Kconfig"
 
 source "lib/Kconfig.kgdb"

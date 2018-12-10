@@ -616,8 +616,8 @@ static int eeprom_config_read_cal_data(struct msm_eeprom_ctrl_t *e_ctrl,
 static int msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 	void __user *argp)
 {
-	struct msm_eeprom_cfg_data *cdata =
-		(struct msm_eeprom_cfg_data *)argp;
+	struct msm_eeprom_cfg_data *cdata = (
+		struct msm_eeprom_cfg_data *)argp;
 	int rc = 0;
 	size_t length = 0;
 
@@ -640,8 +640,7 @@ static int msm_eeprom_config(struct msm_eeprom_ctrl_t *e_ctrl,
 			break;
 		}
 		memcpy(cdata->cfg.eeprom_name,
-			e_ctrl->eboard_info->eeprom_name,
-			sizeof(cdata->cfg.eeprom_name));
+			e_ctrl->eboard_info->eeprom_name, length);
 		break;
 	case CFG_EEPROM_GET_CAL_DATA:
 		CDBG("%s E CFG_EEPROM_GET_CAL_DATA\n", __func__);
@@ -1480,10 +1479,8 @@ static int msm_eeprom_config32(struct msm_eeprom_ctrl_t *e_ctrl,
 			rc = -EINVAL;
 			break;
 		}
-
 		memcpy(cdata->cfg.eeprom_name,
-			e_ctrl->eboard_info->eeprom_name,
-			sizeof(cdata->cfg.eeprom_name));
+			e_ctrl->eboard_info->eeprom_name, length);
 		break;
 	case CFG_EEPROM_GET_CAL_DATA:
 		CDBG("%s E CFG_EEPROM_GET_CAL_DATA\n", __func__);

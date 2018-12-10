@@ -1,0 +1,60 @@
+/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+qcom,fx30-lg {
+	/* #1928848_Moto_FX30_3000mAh_averaged_MasterSlave_Apr30th2015*/
+	qcom,max-voltage-uv = <4400000>;
+	qcom,nom-batt-capacity-mah = <3000>;
+	qcom,batt-id-kohm = <250>;
+	qcom,battery-beta = <3900>;
+	qcom,battery-type = "FX30-LG-3000mah-v2";
+	qcom,chg-rslow-comp-c1 = <3039290>;
+	qcom,chg-rslow-comp-c2 = <4016069>;
+	qcom,chg-rs-to-rslow = <905982>;
+	qcom,chg-rslow-comp-thr = <0x9F>;
+	qcom,checksum = <0xECE3>;
+	qcom,gui-version = "PMI8994GUI - 2.1.6.5";
+	qcom,fg-profile-data = [
+		 E9 82 59 71
+		 D4 63 A9 41
+		 4A 83 FD 68
+		 16 71 86 76
+		 37 82 01 98
+		 AB B4 5F BB
+		 83 13 09 88
+		 7B 7E 98 82
+		 47 7D 7D 83
+		 7F 7C 16 90
+		 45 96 2D 82
+		 2D 99 44 B7
+		 CC C2 58 16
+		 D5 0B A9 59
+		 14 70 71 FD
+		 9F 47 E7 45
+		 AA 4A 00 00
+		 94 47 F2 30
+		 AE 35 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 63 70 F5 6A
+		 49 69 5E 8A
+		 B2 77 82 6B
+		 25 74 D0 7A
+		 1C 76 D0 68
+		 64 84 1A C3
+		 0C 39 59 FD
+		 54 A0 71 0C
+		 28 00 FF 36
+		 F0 11 30 03
+		 00 00 00 0C
+	];
+};

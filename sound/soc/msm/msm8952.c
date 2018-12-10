@@ -33,6 +33,7 @@
 #include "../codecs/msm8x16-wcd.h"
 #include "../codecs/wsa881x-analog.h"
 #include <linux/regulator/consumer.h>
+#include <sound/ospl2xx.h>
 #define DRV_NAME "msm8952-asoc-wcd"
 
 #define BTSCO_RATE_8KHZ 8000
@@ -158,6 +159,18 @@ static struct afe_clk_set wsa_ana_clk = {
 	Q6AFE_LPASS_CLK_ROOT_DEFAULT,
 	0,
 };
+
+#ifdef CONFIG_SND_SOC_CS35L34
+static struct afe_clk_cfg l34_ana_clk = {
+	AFE_API_VERSION_I2S_CONFIG,
+	0,
+	Q6AFE_LPASS_OSR_CLK_12_P288_MHZ,
+	Q6AFE_LPASS_CLK_SRC_INTERNAL,
+	Q6AFE_LPASS_CLK_ROOT_DEFAULT,
+	Q6AFE_LPASS_MODE_CLK2_VALID,
+	0,
+};
+#endif
 
 static char const *rx_bit_format_text[] = {"S16_LE", "S24_LE", "S24_3LE"};
 static const char *const ter_mi2s_tx_ch_text[] = {"One", "Two"};
@@ -1192,6 +1205,52 @@ static int msm8952_ext_audio_switch_event(struct snd_soc_dapm_widget *w,
 	return ret;
 }
 
+#ifdef CONFIG_SND_SOC_CS35L34
+static int msm8952_enable_cs35l34_mclk(struct snd_soc_card *card, bool enable)
+{
+	int ret = 0;
+	struct msm8916_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
+
+	mutex_lock(&pdata->l34_mclk_mutex);
+	if (enable) {
+		if (!atomic_read(&pdata->l34_mclk_rsc_ref)) {
+			pr_debug("%s: going to enable afe clock for cs35l34\n", __func__);
+			l34_ana_clk.clk_val2 =
+					Q6AFE_LPASS_OSR_CLK_12_P288_MHZ;
+			ret = afe_set_lpass_clock(
+					AFE_PORT_ID_SECONDARY_MI2S_RX,
+					&l34_ana_clk);
+			if (ret < 0) {
+				pr_err("%s: failed to enable mclk %d\n",
+					__func__, ret);
+				goto done;
+			}
+		}
+		atomic_inc(&pdata->l34_mclk_rsc_ref);
+	} else {
+		if (!atomic_read(&pdata->l34_mclk_rsc_ref))
+			goto done;
+		if (!atomic_dec_return(&pdata->l34_mclk_rsc_ref)) {
+			pr_debug("%s: going to disable afe clock for cs35l34\n", __func__);
+			l34_ana_clk.clk_val2 =
+					Q6AFE_LPASS_OSR_CLK_DISABLE;
+			ret = afe_set_lpass_clock(
+					AFE_PORT_ID_SECONDARY_MI2S_RX,
+					&l34_ana_clk);
+			if (ret < 0) {
+				pr_err("%s: failed to disable mclk %d\n",
+					__func__, ret);
+				goto done;
+			}
+		}
+	}
+
+done:
+	mutex_unlock(&pdata->l34_mclk_mutex);
+	return ret;
+}
+#endif
+
 static int msm8952_enable_wsa_mclk(struct snd_soc_card *card, bool enable)
 {
 	int ret = 0;
@@ -1622,6 +1681,23 @@ static int msm_quin_mi2s_snd_startup(struct snd_pcm_substream *substream)
 		pr_err("failed to enable sclk\n");
 		return ret;
 	}
+#ifdef CONFIG_SND_SOC_CS35L34
+	pr_debug("%s, going to activate cs35l34_clk\n", __func__);
+	ret = msm_gpioset_activate(CLIENT_WCD_INT, "cs35l34_clk");
+	if (ret < 0) {
+		pr_err("failed to enable codec gpios, cs35l34_clk\n");
+		goto err;
+	}
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		pr_debug("%s, going to enable cs35l34_mclk\n", __func__);
+		ret = msm8952_enable_cs35l34_mclk(card, true);
+		if (ret < 0) {
+			pr_err("%s: failed to enable mclk for cs35l34 %d\n",
+				__func__, ret);
+			return ret;
+		}
+	}
+#endif
 	ret = msm_gpioset_activate(CLIENT_WCD_INT, "quin_i2s");
 	if (ret < 0) {
 		pr_err("failed to enable codec gpios\n");
@@ -1661,6 +1737,24 @@ static void msm_quin_mi2s_snd_shutdown(struct snd_pcm_substream *substream)
 						__func__, "quin_i2s");
 			return;
 		}
+#ifdef CONFIG_SND_SOC_CS35L34
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			pr_debug("%s, going to disable cs35l34 mclk\n", __func__);
+			ret = msm8952_enable_cs35l34_mclk(card, false);
+			if (ret < 0) {
+				pr_err("%s: failed to disable mclk for l34 %d\n",
+					__func__, ret);
+				return;
+			}
+		}
+		pr_debug("%s, going to de-activate cs35l34_clk\n", __func__);
+		ret = msm_gpioset_suspend(CLIENT_WCD_INT, "cs35l34_clk");
+		if (ret < 0) {
+			pr_err("%s: gpio set cannot be de-activated %s",
+						__func__, "cs35l34_clk");
+			return;
+		}
+#endif
 	}
 }
 
@@ -1759,6 +1853,12 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 			return ret;
 		}
 	}
+#ifdef CONFIG_SND_SOC_OPALUM
+	ret = ospl2xx_init(rtd);
+	if (ret != 0)
+		pr_err("%s Cannot set Opalum controls %d\n", __func__, ret);
+#endif
+
 	return msm8x16_wcd_hs_detect(codec, &mbhc_cfg);
 }
 
@@ -1790,6 +1890,20 @@ static struct snd_soc_ops msm_pri_auxpcm_be_ops = {
 	.startup = msm_prim_auxpcm_startup,
 	.shutdown = msm_prim_auxpcm_shutdown,
 };
+
+#ifdef CONFIG_SND_SOC_CS35L34
+static int cs35l34_dai_init(struct snd_soc_pcm_runtime *rtd)
+{
+	int ret;
+	struct snd_soc_dai *cs35l34_dai = rtd->codec_dai;
+
+	ret = snd_soc_dai_set_sysclk(cs35l34_dai, 0, 12288000, 0);
+	if (ret != 0)
+		dev_err(cs35l34_dai->dev, "Cannot set cs35l34 MCLK %d\n", ret);
+
+	return ret;
+}
+#endif
 
 /* Digital audio interface glue - connects codec <---> CPU */
 static struct snd_soc_dai_link msm8952_dai[] = {
@@ -2563,6 +2677,38 @@ static struct snd_soc_dai_link msm8952_dai[] = {
 		.be_hw_params_fixup = msm_be_hw_params_fixup,
 		.ignore_suspend = 1,
 	},
+
+#ifdef CONFIG_SND_SOC_CS35L34
+	{
+		.name = LPASS_BE_QUIN_MI2S_RX,
+		.stream_name = "Quinary MI2S Playback",
+		.cpu_dai_name = "msm-dai-q6-mi2s.5",
+		.platform_name = "msm-pcm-routing",
+		.codec_name =  "cs35l34.2-0040",
+		.codec_dai_name = "cs35l34",
+		.init = cs35l34_dai_init,
+		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+			SND_SOC_DAIFMT_CBS_CFS,
+		.no_pcm = 1,
+		.be_id = MSM_BACKEND_DAI_QUINARY_MI2S_RX,
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.ops = &msm8952_quin_mi2s_be_ops,
+		.ignore_pmdown_time = 1,
+		.ignore_suspend = 1,
+	},
+	{
+		.name = LPASS_BE_QUIN_MI2S_TX,
+		.stream_name = "Quinary MI2S Capture",
+		.cpu_dai_name = "msm-dai-q6-mi2s.5",
+		.platform_name = "msm-pcm-hostless",
+		.codec_dai_name = "cs35l34",
+		.codec_name = "cs35l34.2-0040",
+		.be_hw_params_fixup = msm_be_hw_params_fixup,
+		.no_host_mode = SND_SOC_DAI_LINK_NO_HOST,
+		.ops = &msm8952_quin_mi2s_be_ops,
+		.ignore_suspend = 1,
+	},
+#else
 	{
 		.name = LPASS_BE_QUIN_MI2S_RX,
 		.stream_name = "Quinary MI2S Playback",
@@ -2590,6 +2736,7 @@ static struct snd_soc_dai_link msm8952_dai[] = {
 		.ops = &msm8952_quin_mi2s_be_ops,
 		.ignore_suspend = 1,
 	},
+#endif
 };
 
 static int msm8952_wsa881x_init(struct snd_soc_dapm_context *dapm)
@@ -3169,6 +3316,8 @@ static int msm8952_asoc_machine_probe(struct platform_device *pdev)
 		mutex_init(&pdata->wsa_mclk_mutex);
 		atomic_set(&pdata->wsa_mclk_rsc_ref, 0);
 	}
+	mutex_init(&pdata->l34_mclk_mutex);
+	atomic_set(&pdata->l34_mclk_rsc_ref, 0);
 	atomic_set(&pdata->mclk_enabled, false);
 	atomic_set(&quat_mi2s_clk_ref, 0);
 	atomic_set(&quin_mi2s_clk_ref, 0);
@@ -3235,6 +3384,7 @@ static int msm8952_asoc_machine_remove(struct platform_device *pdev)
 		}
 		mutex_destroy(&pdata->wsa_mclk_mutex);
 	}
+	mutex_destroy(&pdata->l34_mclk_mutex);
 	snd_soc_unregister_card(card);
 	mutex_destroy(&pdata->cdc_mclk_mutex);
 	return 0;

@@ -304,6 +304,22 @@ static struct usb_gadget_strings *mtp_strings[] = {
 	NULL,
 };
 
+static struct usb_string ptp_string_defs[] = {
+	/* Naming interface "PTP" so test scripts will recognize us */
+	[INTERFACE_STRING_INDEX].s	= "PTP",
+	{  },	/* end of list */
+};
+
+static struct usb_gadget_strings ptp_string_table = {
+	.language		= 0x0409,	/* en-US */
+	.strings		= ptp_string_defs,
+};
+
+static struct usb_gadget_strings *ptp_strings[] = {
+	&ptp_string_table,
+	NULL,
+};
+
 /* Microsoft MTP OS String */
 static u8 mtp_os_string[] = {
 	18, /* sizeof(mtp_os_string) */
@@ -784,6 +800,11 @@ static void send_file_work(struct work_struct *data)
 	offset = dev->xfer_file_offset;
 	count = dev->xfer_file_length;
 
+	if (count < 0) {
+		dev->xfer_result = -EINVAL;
+		return;
+	}
+
 	DBG(cdev, "send_file_work(%lld %lld)\n", offset, count);
 
 	if (dev->xfer_send_header) {
@@ -890,7 +911,7 @@ static void receive_file_work(struct work_struct *data)
 	struct file *filp;
 	loff_t offset;
 	int64_t count;
-	int ret, cur_buf = 0;
+	int ret, len, cur_buf = 0;
 	int r = 0;
 	ktime_t start_time;
 
@@ -900,10 +921,12 @@ static void receive_file_work(struct work_struct *data)
 	offset = dev->xfer_file_offset;
 	count = dev->xfer_file_length;
 
+	if (count < 0) {
+		dev->xfer_result = -EINVAL;
+		return;
+	}
+
 	DBG(cdev, "receive_file_work(%lld)\n", count);
-	if (!IS_ALIGNED(count, dev->ep_out->maxpacket))
-		DBG(cdev, "%s- count(%lld) not multiple of mtu(%d)\n", __func__,
-						count, dev->ep_out->maxpacket);
 
 	while (count > 0 || write_req) {
 		if (count > 0) {
@@ -911,8 +934,15 @@ static void receive_file_work(struct work_struct *data)
 			read_req = dev->rx_req[cur_buf];
 			cur_buf = (cur_buf + 1) % RX_REQ_MAX;
 
-			/* some h/w expects size to be aligned to ep's MTU */
-			read_req->length = mtp_rx_req_len;
+			/* The ALIGN macro may overflow if count is very large, so we only use it
+			 * if count <= mtp_rx_req_len.  This is safe because mtp_rx_req_len
+			 * should already be aligned.
+			 */
+			if (count <= mtp_rx_req_len)
+				len = ALIGN(count, dev->ep_out->maxpacket);
+			else
+				len = mtp_rx_req_len;
+			read_req->length = len;
 
 			dev->rx_done = 0;
 			ret = usb_ep_queue(dev->ep_out, read_req, GFP_KERNEL);
@@ -1252,14 +1282,18 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 	u16	w_value = le16_to_cpu(ctrl->wValue);
 	u16	w_length = le16_to_cpu(ctrl->wLength);
 	unsigned long	flags;
+	bool	ptp_mode = false;
 
 	VDBG(cdev, "mtp_ctrlrequest "
 			"%02x.%02x v%04x i%04x l%u\n",
 			ctrl->bRequestType, ctrl->bRequest,
 			w_value, w_index, w_length);
 
+	if (dev->function.hs_descriptors == hs_ptp_descs)
+		ptp_mode = true;
+
 	/* Handle MTP OS string */
-	if (ctrl->bRequestType ==
+	if (!ptp_mode && ctrl->bRequestType ==
 			(USB_DIR_IN | USB_TYPE_STANDARD | USB_RECIP_DEVICE)
 			&& ctrl->bRequest == USB_REQ_GET_DESCRIPTOR
 			&& (w_value >> 8) == USB_DT_STRING
@@ -1272,7 +1306,7 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 		DBG(cdev, "vendor request: %d index: %d value: %d length: %d\n",
 			ctrl->bRequest, w_index, w_value, w_length);
 
-		if (ctrl->bRequest == 1
+		if (!ptp_mode && ctrl->bRequest == 1
 				&& (ctrl->bRequestType & USB_DIR_IN)
 				&& (w_index == 4 || w_index == 5)) {
 			value = (w_length < sizeof(mtp_ext_config_desc) ?
@@ -1472,7 +1506,13 @@ static int mtp_bind_config(struct usb_configuration *c, bool ptp_config)
 	printk(KERN_INFO "mtp_bind_config\n");
 
 	/* allocate a string ID for our interface */
-	if (mtp_string_defs[INTERFACE_STRING_INDEX].id == 0) {
+	if (ptp_config && ptp_string_defs[INTERFACE_STRING_INDEX].id == 0) {
+		ret = usb_string_id(c->cdev);
+		if (ret < 0)
+			return ret;
+		ptp_string_defs[INTERFACE_STRING_INDEX].id = ret;
+		ptp_interface_desc.iInterface = ret;
+	} else if (mtp_string_defs[INTERFACE_STRING_INDEX].id == 0) {
 		ret = usb_string_id(c->cdev);
 		if (ret < 0)
 			return ret;
@@ -1482,13 +1522,14 @@ static int mtp_bind_config(struct usb_configuration *c, bool ptp_config)
 
 	dev->cdev = c->cdev;
 	dev->function.name = "mtp";
-	dev->function.strings = mtp_strings;
 	if (ptp_config) {
+		dev->function.strings = ptp_strings;
 		dev->function.fs_descriptors = fs_ptp_descs;
 		dev->function.hs_descriptors = hs_ptp_descs;
 		if (gadget_is_superspeed(c->cdev->gadget))
 			dev->function.ss_descriptors = ss_ptp_descs;
 	} else {
+		dev->function.strings = mtp_strings;
 		dev->function.fs_descriptors = fs_mtp_descs;
 		dev->function.hs_descriptors = hs_mtp_descs;
 		if (gadget_is_superspeed(c->cdev->gadget))

@@ -1216,7 +1216,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	ac->port[dir].buf = buf;
 
 	/* check for integer overflow */
-	if ((bufcnt > 0) && ((INT_MAX / bufcnt) < bufsz)) {
+	if ((bufcnt > 0) && ((UINT_MAX / bufcnt) < bufsz)) {
 		pr_err("%s: integer overflow\n", __func__);
 		mutex_unlock(&ac->cmd_lock);
 		goto fail;
@@ -5078,7 +5078,6 @@ static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 	cmd_size = sizeof(struct avs_cmd_shared_mem_map_regions)
 			+ (sizeof(struct avs_shared_map_region_payload)
 							* bufcnt_t);
-
 
 	if (bufcnt > (UINT_MAX / sizeof(struct asm_buffer_node))) {
 		pr_err("%s: Unsigned Integer Overflow. bufcnt = %u\n",

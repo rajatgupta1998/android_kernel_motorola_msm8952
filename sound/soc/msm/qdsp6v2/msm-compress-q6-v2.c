@@ -611,8 +611,12 @@ static void compr_event_handler(uint32_t opcode,
 		pr_err("%s: Received reset events CB, move to error state",
 			__func__);
 		spin_lock_irqsave(&prtd->lock, flags);
-		snd_compr_fragment_elapsed(cstream);
+		/*
+		 * Since ADSP is down, let this driver pretend that it copied
+		 * all the bytes received, so that next write will be triggered
+		 */
 		prtd->copied_total = prtd->bytes_received;
+		snd_compr_fragment_elapsed(cstream);
 		atomic_set(&prtd->error, 1);
 		wake_up(&prtd->drain_wait);
 		if (atomic_cmpxchg(&prtd->eos, 1, 0)) {
@@ -1250,6 +1254,7 @@ static int msm_compr_free(struct snd_compr_stream *cstream)
 	q6asm_audio_client_buf_free_contiguous(dir, ac);
 
 	q6asm_audio_client_free(ac);
+
 	if (pdata->audio_effects[soc_prtd->dai_link->be_id] != NULL) {
 		kfree(pdata->audio_effects[soc_prtd->dai_link->be_id]);
 		pdata->audio_effects[soc_prtd->dai_link->be_id] = NULL;
@@ -1957,8 +1962,12 @@ static int msm_compr_pointer(struct snd_compr_stream *cstream,
 	tstamp.copied_total = prtd->copied_total;
 	first_buffer = prtd->first_buffer;
 	if (atomic_read(&prtd->error)) {
-		pr_err("%s Got RESET EVENTS notification, return error",
+		pr_err("%s Got RESET EVENTS notification, return error\n",
 			__func__);
+		if (cstream->direction == SND_COMPRESS_PLAYBACK)
+			runtime->total_bytes_transferred = tstamp.copied_total;
+		else
+			runtime->total_bytes_available = tstamp.copied_total;
 		tstamp.pcm_io_frames = 0;
 		memcpy(arg, &tstamp, sizeof(struct snd_compr_tstamp));
 		spin_unlock_irqrestore(&prtd->lock, flags);

@@ -29,6 +29,12 @@
 #include <linux/regulator/machine.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/qpnp/power-on.h>
+#include <linux/time.h>
+#ifdef CONFIG_QPNP_USER_RESET
+#include <linux/power_supply.h>
+#include <soc/qcom/watchdog.h>
+#include <soc/qcom/bootinfo.h>
+#endif
 
 #define CREATE_MASK(NUM_BITS, POS) \
 	((unsigned char) (((1 << (NUM_BITS)) - 1) << (POS)))
@@ -80,6 +86,10 @@
 #define QPNP_PON_SEC_ACCESS(base)		(base + 0xD0)
 
 #define QPNP_PON_SEC_UNLOCK			0xA5
+
+/* spared registers for storing extra reset information */
+#define QPNP_PON_EXTRA_RESET_INFO_1(base)	(base + 0x8D)
+#define QPNP_PON_EXTRA_RESET_INFO_2(base)	(base + 0x8E)
 
 #define QPNP_PON_WARM_RESET_TFT			BIT(4)
 
@@ -233,6 +243,41 @@ static const char * const qpnp_poff_reason[] = {
 static int warm_boot;
 module_param(warm_boot, int, 0);
 
+#ifdef CONFIG_QPNP_USER_RESET
+static void qpnp_user_wdt_handler(unsigned long data);
+static DEFINE_TIMER(wdt_timer, qpnp_user_wdt_handler, 0, 0);
+static void qpnp_user_wdt_handler(unsigned long data)
+{
+	pr_warn("User triggered watchdog reset(Pwr + VolDn)\n");
+	msm_trigger_wdog_bite();
+}
+
+static void qpnp_user_wdt_set(void)
+{
+	struct power_supply *psy;
+	union power_supply_propval data;
+
+	if (bi_secure_hardware())
+		return;
+
+	psy = power_supply_get_by_name("usb");
+	if (!psy || !psy->get_property)
+		return;
+
+	if (psy->get_property(psy, POWER_SUPPLY_PROP_PRESENT, &data))
+		return;
+
+	/* usb charger present*/
+	if (data.intval)
+		mod_timer(&wdt_timer, jiffies + HZ * 6);
+}
+
+static void qpnp_user_wdt_clear(void)
+{
+	del_timer(&wdt_timer);
+}
+#endif
+
 static int
 qpnp_pon_masked_write(struct qpnp_pon *pon, u16 addr, u8 mask, u8 val)
 {
@@ -372,6 +417,41 @@ static ssize_t qpnp_pon_dbc_store(struct device *dev,
 }
 
 static DEVICE_ATTR(debounce_us, 0664, qpnp_pon_dbc_show, qpnp_pon_dbc_store);
+
+int qpnp_pon_store_extra_reset_info(u16 mask, u16 val)
+{
+	int rc = 0;
+	u16 extra_reset_info_reg;
+	struct qpnp_pon *pon = sys_reset_dev;
+
+	if (!pon)
+		return -ENODEV;
+
+	if (mask & 0xFF) {
+		extra_reset_info_reg = QPNP_PON_EXTRA_RESET_INFO_1(pon->base);
+		rc = qpnp_pon_masked_write(pon, extra_reset_info_reg,
+		    mask & 0xFF, val & 0xFF);
+		if (rc) {
+			pr_err("Failed to store extra reset info to 0x%x\n",
+			    extra_reset_info_reg);
+			return rc;
+		}
+	}
+
+	if (mask & 0xFF00) {
+		extra_reset_info_reg = QPNP_PON_EXTRA_RESET_INFO_2(pon->base);
+		rc = qpnp_pon_masked_write(pon, extra_reset_info_reg,
+		    (mask & 0xFF00) >> 8, (val & 0xFF00) >> 8);
+		if (rc) {
+			pr_err("Failed to store extra reset info to 0x%x\n",
+			    extra_reset_info_reg);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(qpnp_pon_store_extra_reset_info);
 
 static int qpnp_pon_reset_config(struct qpnp_pon *pon,
 		enum pon_power_off_type type)
@@ -627,6 +707,9 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	struct qpnp_pon_config *cfg = NULL;
 	u8 pon_rt_sts = 0, pon_rt_bit = 0;
 	u32 key_status;
+	struct timeval timestamp;
+	struct tm tm;
+	char buff[255];
 
 	cfg = qpnp_get_cfg(pon, pon_type);
 	if (!cfg)
@@ -647,6 +730,16 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	switch (cfg->pon_type) {
 	case PON_KPDPWR:
 		pon_rt_bit = QPNP_PON_KPDPWR_N_SET;
+		/* get the time stamp in readable format to print*/
+		do_gettimeofday(&timestamp);
+		time_to_tm((time_t)(timestamp.tv_sec), 0, &tm);
+		snprintf(buff, sizeof(buff),
+			"%u-%02d-%02d %02d:%02d:%02d UTC",
+			(int) tm.tm_year + 1900, tm.tm_mon + 1,
+			tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+		pr_info("Report pwrkey %s event at: %s\n", pon_rt_bit &
+			pon_rt_sts ? "press" : "release", buff);
 		break;
 	case PON_RESIN:
 		pon_rt_bit = QPNP_PON_RESIN_N_SET;
@@ -664,6 +757,14 @@ qpnp_pon_input_dispatch(struct qpnp_pon *pon, u32 pon_type)
 	pr_debug("PMIC input: code=%d, sts=0x%hhx\n",
 					cfg->key_code, pon_rt_sts);
 	key_status = pon_rt_sts & pon_rt_bit;
+
+#ifdef CONFIG_QPNP_USER_RESET
+	if (pon_rt_sts & QPNP_PON_KPDPWR_N_SET &&
+	    pon_rt_sts & QPNP_PON_RESIN_N_SET) {
+		qpnp_user_wdt_set();
+	} else
+		qpnp_user_wdt_clear();
+#endif
 
 	/* simulate press event in case release event occured
 	 * without a press event

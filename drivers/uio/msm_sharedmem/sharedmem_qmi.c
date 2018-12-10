@@ -51,6 +51,7 @@ static struct dentry *dir_ent;
 
 static u32 rfsa_count;
 static u32 rmts_count;
+static struct mutex dbg_buf_lock;      /* mutex for debug_buffer */
 
 static DECLARE_RWSEM(sharedmem_list_lock); /* declare list lock semaphore */
 
@@ -277,7 +278,6 @@ static u32 fill_debug_info(char *buffer, u32 buffer_size)
 static int debug_open(struct inode *inode, struct file *file)
 {
 	u32 buffer_size;
-
 	mutex_lock(&dbg_buf_lock);
 	if (debug_buffer != NULL) {
 		mutex_unlock(&dbg_buf_lock);

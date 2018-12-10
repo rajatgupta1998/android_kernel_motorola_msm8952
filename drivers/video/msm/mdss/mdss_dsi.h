@@ -326,6 +326,13 @@ struct dsi_kickoff_action {
 	void *data;
 };
 
+struct mdss_panel_config {
+	bool esd_enable;
+	bool bare_board;
+	char panel_name[32];
+	u64 panel_ver;
+};
+
 struct dsi_pinctrl_res {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *gpio_state_active;
@@ -366,7 +373,9 @@ struct mdss_dsi_ctrl_pdata {
 	int (*check_read_status) (struct mdss_dsi_ctrl_pdata *pdata);
 	int (*cmdlist_commit)(struct mdss_dsi_ctrl_pdata *ctrl, int from_mdp);
 	void (*switch_mode) (struct mdss_panel_data *pdata, int mode);
+	void (*bl_on_defer)(struct mdss_dsi_ctrl_pdata *ctrl);
 	struct mdss_panel_data panel_data;
+	struct mdss_panel_config panel_config;
 	unsigned char *ctrl_base;
 	struct dss_io_data ctrl_io;
 	struct dss_io_data mmss_misc_io;
@@ -438,6 +447,8 @@ struct mdss_dsi_ctrl_pdata {
 	struct dsi_panel_cmds video2cmd;
 	struct dsi_panel_cmds cmd2video;
 
+	struct dsi_panel_cmds *param_cmds[PARAM_ID_NUM];
+
 	struct dcs_cmd_list cmdlist;
 	struct completion dma_comp;
 	struct completion mdp_comp;
@@ -466,6 +477,7 @@ struct mdss_dsi_ctrl_pdata {
 	struct dsi_buf status_buf;
 	int status_mode;
 	int rx_len;
+	int cur_max_pkt_size;
 
 	struct dsi_pinctrl_res pin_res;
 
@@ -560,7 +572,8 @@ int mdss_dsi_en_wait4dynamic_done(struct mdss_dsi_ctrl_pdata *ctrl);
 int mdss_dsi_cmdlist_commit(struct mdss_dsi_ctrl_pdata *ctrl, int from_mdp);
 void mdss_dsi_cmdlist_kickoff(int intf);
 int mdss_dsi_bta_status_check(struct mdss_dsi_ctrl_pdata *ctrl);
-int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl);
+int mdss_dsi_reg_status_check(struct mdss_dsi_ctrl_pdata *ctrl, u8 *reg_val);
+int mdss_dsi_reg_status_check_dropbox(struct mdss_dsi_ctrl_pdata *ctrl);
 bool __mdss_dsi_clk_enabled(struct mdss_dsi_ctrl_pdata *ctrl, u8 clk_type);
 void mdss_dsi_ctrl_setup(struct mdss_dsi_ctrl_pdata *ctrl);
 void mdss_dsi_dln0_phy_err(struct mdss_dsi_ctrl_pdata *ctrl, bool print_en);
@@ -579,6 +592,12 @@ int mdss_panel_get_dst_fmt(u32 bpp, char mipi_mode, u32 pixel_packing,
 int mdss_dsi_register_recovery_handler(struct mdss_dsi_ctrl_pdata *ctrl,
 		struct mdss_intf_recovery *recovery);
 void mdss_dsi_unregister_bl_settings(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
+int mdss_dsi_panel_ioctl_handler(struct mdss_panel_data *pdata,
+					u32 cmd, void *arg);
+int mdss_panel_parse_panel_config_dt(struct mdss_dsi_ctrl_pdata *ctrl_pdata);
+
+int mdss_dsi_pinctrl_set_state(struct mdss_dsi_ctrl_pdata *ctrl_pdata,
+								bool active);
 
 static inline const char *__mdss_dsi_pm_name(enum dsi_pm_type module)
 {

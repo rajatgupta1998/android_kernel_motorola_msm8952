@@ -126,6 +126,7 @@ int C_A_D = 1;
 struct pid *cad_pid;
 EXPORT_SYMBOL(cad_pid);
 
+static atomic_t reboot_triggered = ATOMIC_INIT(0);
 /*
  * If set, this is used for preparing the system to power off.
  */
@@ -370,6 +371,16 @@ EXPORT_SYMBOL(unregister_reboot_notifier);
 #define PF_NO_SETAFFINITY		PF_THREAD_BOUND
 #endif
 
+static int reboot_in_progress(void)
+{
+	int ret = atomic_cmpxchg(&reboot_triggered, 0, 1);
+
+	if (ret)
+		pr_err("Reboot in progress\n");
+
+	return ret;
+}
+
 static void migrate_to_reboot_cpu(void)
 {
 	/* The boot cpu is always logical cpu 0 */
@@ -398,6 +409,9 @@ static void migrate_to_reboot_cpu(void)
  */
 void kernel_restart(char *cmd)
 {
+	if (reboot_in_progress())
+		return;
+
 	kernel_restart_prepare(cmd);
 	migrate_to_reboot_cpu();
 	syscore_shutdown();
@@ -405,6 +419,10 @@ void kernel_restart(char *cmd)
 		printk(KERN_EMERG "Restarting system.\n");
 	else
 		printk(KERN_EMERG "Restarting system with command '%s'.\n", cmd);
+	printk(KERN_EMERG "Current task:%s(%d) Parent task:%s(%d)\n",
+		current->comm, current->pid,
+		current->real_parent->comm,
+		current->real_parent->pid);
 	kmsg_dump(KMSG_DUMP_RESTART);
 	machine_restart(cmd);
 }
@@ -425,6 +443,9 @@ static void kernel_shutdown_prepare(enum system_states state)
  */
 void kernel_halt(void)
 {
+	if (reboot_in_progress())
+		return;
+
 	kernel_shutdown_prepare(SYSTEM_HALT);
 	migrate_to_reboot_cpu();
 	syscore_shutdown();
@@ -442,12 +463,19 @@ EXPORT_SYMBOL_GPL(kernel_halt);
  */
 void kernel_power_off(void)
 {
+	if (reboot_in_progress())
+		return;
+
 	kernel_shutdown_prepare(SYSTEM_POWER_OFF);
 	if (pm_power_off_prepare)
 		pm_power_off_prepare();
 	migrate_to_reboot_cpu();
 	syscore_shutdown();
 	printk(KERN_EMERG "Power down.\n");
+	printk(KERN_EMERG "Current task:%s(%d) Parent task:%s(%d)\n",
+		current->comm, current->pid,
+		current->real_parent->comm,
+		current->real_parent->pid);
 	kmsg_dump(KMSG_DUMP_POWEROFF);
 	machine_power_off();
 }

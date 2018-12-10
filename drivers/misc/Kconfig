@@ -343,6 +343,17 @@ config ISL29020
 	  This driver can also be built as a module.  If so, the module
 	  will be called isl29020.
 
+config MOT_UTAG
+	tristate  "Motorola Configuration read/write support "
+	default n
+	help
+	  With this option you get read/write access to utag partition via procfs.
+	  Content of the entire partition can be checked, separate utags accessed
+	  and modified.
+
+	  This driver should be built as a module. The module will be called
+	  utags.ko.
+
 config SENSORS_TSL2550
 	tristate "Taos TSL2550 ambient light sensor"
 	depends on I2C && SYSFS
@@ -645,6 +656,24 @@ config UID_CPUTIME
 	help
 	  Per UID based cpu time statistics exported to /proc/uid_cputime
 
+config DROPBOX
+	tristate "Dropbox sysfs support"
+	default y
+	help
+	  This option enables a sysfs interface for drivers to send text or
+	  binary events to the Android dropbox. A lightweight userspace daemon
+	  polls the sysfs files and copies the data into dropbox using the built
+	  in dropbox manager service.  This enables fast and simple logging of
+	  various critical events from kernel drivers.
+
+config ALSA_TO_H2W
+	tristate "ALSA to H2W wired headset detection converter"
+	help
+	  This option enables a device driver that attach to the input queue and
+	  and exposes EV_SW events SW_HEADPHONE_INSERT & SW_MICROPHONE_INSERT in
+	  /sys/class/switch/h2w/state used by Android headset observer.
+	default n
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -655,4 +684,6 @@ source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"
 source "drivers/misc/vmw_vmci/Kconfig"
 source "drivers/misc/qcom/Kconfig"
+source "drivers/misc/stml0xx/Kconfig"
+source "drivers/misc/sec/Kconfig"
 endmenu

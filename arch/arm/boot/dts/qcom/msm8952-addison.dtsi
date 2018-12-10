@@ -1,0 +1,65 @@
+/* Copyright (c) 2015, Motorola Mobility Inc. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+
+#include "msm8952-moto-common.dtsi"
+#include "dsi-panel-mot-smd-549-1080p-cmd.dtsi"
+
+/ {
+	model = "Addison";
+	compatible = "qcom,msm8952-addison", "qcom,msm8952-moto",
+			"qcom,msm8952";
+};
+
+&soc {
+	vci_disp_vreg: vci_disp_vreg {
+		compatible = "regulator-fixed";
+		regulator-name = "vci_disp";
+		gpio = <&msm_gpio 32 0>;
+		startup-delay-us = <300>;
+		enable-active-high;
+		regulator-boot-on;
+	};
+
+	vio_disp_vreg: vio_disp_vreg {
+		compatible = "regulator-fixed";
+		regulator-name = "vio_disp";
+		vin-supply = <&pm8950_l6>;
+		gpio = <&msm_gpio 33 0>;
+		startup-delay-us = <300>;
+		enable-active-high;
+		regulator-boot-on;
+	};
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&mot_smd_549_1080p_cmd_v0>;
+	vci_disp-supply = <&vci_disp_vreg>;
+	vio_disp-supply = <&vio_disp_vreg>;
+	elvdd_disp-supply = <&lab_regulator>;
+	elvss_disp-supply = <&ibb_regulator>;
+};
+
+/* display boost and inverting boost regulators */
+&labibb {
+	status = "ok";
+	qpnp,qpnp-labibb-mode = "amoled";
+};
+
+&ibb_regulator {
+	qcom,qpnp-ibb-init-amoled-voltage = <5000000>;
+	qcom,qpnp-ibb-discharge-resistor = <32>;
+};
+
+&sdhc_2 {
+	cd-gpios = <&msm_gpio 67 0x0>;
+};

@@ -17,6 +17,10 @@
 #include <linux/balloon_compaction.h>
 #include <linux/page-isolation.h>
 #include <linux/kasan.h>
+#include <linux/fb.h>
+#include <linux/kthread.h>
+#include <linux/freezer.h>
+#include <linux/module.h>
 #include "internal.h"
 
 #ifdef CONFIG_COMPACTION
@@ -867,6 +871,7 @@ static int compact_finished(struct zone *zone,
 {
 	unsigned int order;
 	unsigned long watermark;
+	int alloc_flags = 0;
 
 	if (fatal_signal_pending(current))
 		return COMPACT_PARTIAL;
@@ -896,7 +901,9 @@ static int compact_finished(struct zone *zone,
 	watermark = low_wmark_pages(zone);
 	watermark += (1 << cc->order);
 
-	if (!zone_watermark_ok(zone, cc->order, watermark, 0, 0))
+	if (current_is_kswapd() && (zone_idx(zone) == ZONE_MOVABLE))
+		alloc_flags |= ALLOC_CMA;
+	if (!zone_watermark_ok(zone, cc->order, watermark, 0, alloc_flags))
 		return COMPACT_CONTINUE;
 
 	/* Direct compactor: Is a suitable page free? */
@@ -926,6 +933,7 @@ unsigned long compaction_suitable(struct zone *zone, int order)
 {
 	int fragindex;
 	unsigned long watermark;
+	int alloc_flags = 0;
 
 	/*
 	 * order == -1 is expected when compacting via
@@ -934,13 +942,15 @@ unsigned long compaction_suitable(struct zone *zone, int order)
 	if (order == -1)
 		return COMPACT_CONTINUE;
 
+	if (current_is_kswapd() && (zone_idx(zone) == ZONE_MOVABLE))
+		alloc_flags |= ALLOC_CMA;
 	/*
 	 * Watermarks for order-0 must be met for compaction. Note the 2UL.
 	 * This is because during migration, copies of pages need to be
 	 * allocated and for a short time, the footprint is higher
 	 */
 	watermark = low_wmark_pages(zone) + (2UL << order);
-	if (!zone_watermark_ok(zone, 0, watermark, 0, 0))
+	if (!zone_watermark_ok(zone, 0, watermark, 0, alloc_flags))
 		return COMPACT_SKIPPED;
 
 	/*
@@ -959,7 +969,7 @@ unsigned long compaction_suitable(struct zone *zone, int order)
 		return COMPACT_SKIPPED;
 
 	if (fragindex == -1000 && zone_watermark_ok(zone, order, watermark,
-	    0, 0))
+	    0, alloc_flags))
 		return COMPACT_PARTIAL;
 
 	return COMPACT_CONTINUE;
@@ -1137,6 +1147,77 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 	return rc;
 }
 
+static struct compact_thread {
+	wait_queue_head_t waitqueue;
+	struct task_struct *task;
+	struct timer_list timer;
+	atomic_t should_run;
+} compact_thread;
+
+static uint compact_interval_sec = 1800;
+module_param_named(interval, compact_interval_sec, uint,
+			S_IRUGO | S_IWUSR | S_IWGRP);
+
+static void compact_nodes(void);
+
+static int compact_thread_should_run(void)
+{
+	return atomic_read(&compact_thread.should_run);
+}
+
+static void compact_thread_wakeup(void)
+{
+	atomic_set(&compact_thread.should_run, 1);
+	wake_up(&compact_thread.waitqueue);
+}
+
+static void compact_thread_timer_func(unsigned long data)
+{
+	compact_thread_wakeup();
+	mod_timer(&compact_thread.timer,
+			jiffies + (HZ * compact_interval_sec));
+}
+
+static int compact_thread_func(void *data)
+{
+	set_freezable();
+	for (;;) {
+		wait_event_freezable(compact_thread.waitqueue,
+				compact_thread_should_run());
+		if (compact_thread_should_run()) {
+			compact_nodes();
+			atomic_set(&compact_thread.should_run, 0);
+		}
+	}
+	return 0;
+}
+
+static int compact_notifier(struct notifier_block *self,
+				unsigned long event, void *data)
+{
+	struct fb_event *evdata = (struct fb_event *)data;
+
+	if ((event == FB_EVENT_BLANK) && evdata && evdata->data) {
+		int blank = *(int *)evdata->data;
+
+		if (blank == FB_BLANK_POWERDOWN) {
+			del_timer_sync(&compact_thread.timer);
+			compact_thread_wakeup();
+			return NOTIFY_OK;
+		} else if (blank == FB_BLANK_UNBLANK) {
+			if (!timer_pending(&compact_thread.timer))
+				mod_timer(&compact_thread.timer, jiffies +
+						(HZ * compact_interval_sec));
+			return NOTIFY_OK;
+		}
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block compact_notifier_block = {
+	.notifier_call = compact_notifier,
+	.priority = -1,
+};
 
 /* Compact all zones within a node */
 static void __compact_pgdat(pg_data_t *pgdat, struct compact_control *cc)
@@ -1160,8 +1241,13 @@ static void __compact_pgdat(pg_data_t *pgdat, struct compact_control *cc)
 			compact_zone(zone, cc);
 
 		if (cc->order > 0) {
-			int ok = zone_watermark_ok(zone, cc->order,
-						low_wmark_pages(zone), 0, 0);
+			int alloc_flags = 0;
+			int ok;
+
+			if (current_is_kswapd() && (zoneid == ZONE_MOVABLE))
+				alloc_flags |= ALLOC_CMA;
+			ok = zone_watermark_ok(zone, cc->order,
+					low_wmark_pages(zone), 0, alloc_flags);
 			if (ok && cc->order >= zone->compact_order_failed)
 				zone->compact_order_failed = cc->order + 1;
 			/* Currently async compaction is never deferred. */
@@ -1256,4 +1342,20 @@ void compaction_unregister_node(struct node *node)
 }
 #endif /* CONFIG_SYSFS && CONFIG_NUMA */
 
+static int  __init mem_compaction_init(void)
+{
+	struct sched_param param = { .sched_priority = 0 };
+
+	init_timer_deferrable(&compact_thread.timer);
+	compact_thread.timer.function = compact_thread_timer_func;
+	init_waitqueue_head(&compact_thread.waitqueue);
+	compact_thread.task = kthread_run(compact_thread_func, NULL,
+				"%s", "kcompact");
+	if (!IS_ERR(compact_thread.task))
+		sched_setscheduler(compact_thread.task, SCHED_IDLE, &param);
+
+	fb_register_client(&compact_notifier_block);
+	return 0;
+}
+late_initcall(mem_compaction_init);
 #endif /* CONFIG_COMPACTION */

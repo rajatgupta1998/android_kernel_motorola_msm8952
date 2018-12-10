@@ -945,7 +945,7 @@ static struct sk_buff *tun_alloc_skb(struct tun_file *tfile,
 		linear = len;
 
 	skb = sock_alloc_send_pskb(sk, prepad + linear, len - linear, noblock,
-				   &err);
+				   &err, 0);
 	if (!skb)
 		return ERR_PTR(err);
 
@@ -1164,6 +1164,10 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 			return -EINVAL;
 		}
 	}
+
+	if (!(tun->flags & TUN_NO_PI))
+		if (pi.flags & htons(CHECKSUM_UNNECESSARY))
+			skb->ip_summed = CHECKSUM_UNNECESSARY;
 
 	if (!(tun->flags & TUN_NO_PI))
 		if (pi.flags & htons(CHECKSUM_UNNECESSARY))

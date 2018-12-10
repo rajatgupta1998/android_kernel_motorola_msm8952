@@ -35,6 +35,8 @@
 #include "peripheral-loader.h"
 #include "pil-q6v5.h"
 #include "pil-msa.h"
+#include "mmi-unit-info.h"
+#include <soc/qcom/bootinfo.h>
 
 #define MAX_VDD_MSS_UV		1150000
 #define PROXY_TIMEOUT_MS	10000
@@ -43,10 +45,16 @@
 
 #define subsys_to_drv(d) container_of(d, struct modem_data, subsys_desc)
 
+static char pil_ssr_reason[MAX_SSR_REASON_LEN];
+static char *ssr_reason = pil_ssr_reason;
+module_param(ssr_reason, charp, S_IRUGO);
+
 static void log_modem_sfr(void)
 {
 	u32 size;
-	char *smem_reason, reason[MAX_SSR_REASON_LEN];
+	char *smem_reason;
+
+	mmi_set_pureason(PU_REASON_MODEM_RESET);
 
 	smem_reason = smem_get_entry_no_rlock(SMEM_SSR_REASON_MSS0, &size, 0,
 							SMEM_ANY_HOST_FLAG);
@@ -59,8 +67,8 @@ static void log_modem_sfr(void)
 		return;
 	}
 
-	strlcpy(reason, smem_reason, min(size, MAX_SSR_REASON_LEN));
-	pr_err("modem subsystem failure reason: %s.\n", reason);
+	strlcpy(pil_ssr_reason, smem_reason, min((size_t)size, sizeof(pil_ssr_reason)));
+	pr_err("modem subsystem failure reason: %s.\n", pil_ssr_reason);
 
 	smem_reason[0] = '\0';
 	wmb();

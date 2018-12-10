@@ -278,6 +278,32 @@ static int mmc_err_state_clear(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(mmc_err_state, mmc_err_state_get,
 		mmc_err_state_clear, "%llu\n");
 
+static int mmc_host_caps_get(void *data, u64 *val)
+{
+	struct mmc_host *host = data;
+
+	*val = ((u64)host->caps2 << 32) | host->caps;
+
+	return 0;
+}
+
+static int mmc_host_caps_set(void *data, u64 val)
+{
+	struct mmc_host *host = data;
+
+	mmc_rpm_hold(host, &host->class_dev);
+	mmc_claim_host(host);
+	host->caps = (u32)val;
+	host->caps2 = (u32)(val >> 32);
+	mmc_release_host(host);
+	mmc_rpm_release(host, &host->class_dev);
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(mmc_host_caps_fops, mmc_host_caps_get,
+			mmc_host_caps_set, "0x%016llx\n");
+
 void mmc_add_host_debugfs(struct mmc_host *host)
 {
 	struct dentry *root;
@@ -297,7 +323,7 @@ void mmc_add_host_debugfs(struct mmc_host *host)
 		goto err_node;
 
 	if (!debugfs_create_file("clock", S_IRUSR | S_IWUSR, root, host,
-			&mmc_clock_fops))
+		&mmc_clock_fops))
 		goto err_node;
 
 	if (!debugfs_create_file("max_clock", S_IRUSR | S_IWUSR, root, host,
@@ -308,9 +334,13 @@ void mmc_add_host_debugfs(struct mmc_host *host)
 		&mmc_err_state))
 		goto err_node;
 
+	if (!debugfs_create_file("caps", S_IRUSR | S_IWUSR, root, host,
+		&mmc_host_caps_fops))
+		goto err_node;
+
 #ifdef CONFIG_MMC_CLKGATE
 	if (!debugfs_create_u32("clk_delay", (S_IRUSR | S_IWUSR),
-				root, &host->clk_delay))
+		root, &host->clk_delay))
 		goto err_node;
 #endif
 #ifdef CONFIG_FAIL_MMC_REQUEST
@@ -318,8 +348,7 @@ void mmc_add_host_debugfs(struct mmc_host *host)
 		setup_fault_attr(&fail_default_attr, fail_request);
 	host->fail_mmc_request = fail_default_attr;
 	if (IS_ERR(fault_create_debugfs_attr("fail_mmc_request",
-					     root,
-					     &host->fail_mmc_request)))
+		root, &host->fail_mmc_request)))
 		goto err_node;
 #endif
 	return;
@@ -666,102 +695,70 @@ static const struct file_operations mmc_dbg_wr_pack_stats_fops = {
 	.write		= mmc_wr_pack_stats_write,
 };
 
-static int mmc_bkops_stats_open(struct inode *inode, struct file *filp)
+static int mmc_bkops_stats_show(struct seq_file *s, void *v)
 {
-	struct mmc_card *card = inode->i_private;
-
-	filp->private_data = card;
-
-	card->bkops_info.bkops_stats.print_stats = 1;
-	return 0;
-}
-
-static ssize_t mmc_bkops_stats_read(struct file *filp, char __user *ubuf,
-				     size_t cnt, loff_t *ppos)
-{
-	struct mmc_card *card = filp->private_data;
+	struct mmc_card *card = (struct mmc_card *)s->private;
 	struct mmc_bkops_stats *bkops_stats;
 	int i;
-	char *temp_buf;
 
 	if (!card)
-		return cnt;
-
-	if (!access_ok(VERIFY_WRITE, ubuf, cnt))
-		return cnt;
-
-	bkops_stats = &card->bkops_info.bkops_stats;
-
-	if (!bkops_stats->print_stats)
 		return 0;
 
+	bkops_stats = &card->bkops_info.bkops_stats;
 	if (!bkops_stats->enabled) {
 		pr_info("%s: bkops statistics are disabled\n",
 			 mmc_hostname(card->host));
 		goto exit;
 	}
-
-	temp_buf = kmalloc(TEMP_BUF_SIZE, GFP_KERNEL);
-	if (!temp_buf)
-		goto exit;
+	if (!bkops_stats->print_stats)
+		return 0;
 
 	spin_lock(&bkops_stats->lock);
-
-	memset(ubuf, 0, cnt);
-
-	snprintf(temp_buf, TEMP_BUF_SIZE, "%s: bkops statistics:\n",
+	seq_printf(s, "%s: bkops statistics:\n",
 		mmc_hostname(card->host));
-	strlcat(ubuf, temp_buf, cnt);
 
 	for (i = 0 ; i < BKOPS_NUM_OF_SEVERITY_LEVELS ; ++i) {
-		snprintf(temp_buf, TEMP_BUF_SIZE,
-			 "%s: BKOPS: due to level %d: %u\n",
-		 mmc_hostname(card->host), i, bkops_stats->bkops_level[i]);
-		strlcat(ubuf, temp_buf, cnt);
+		seq_printf(s, "%s: BKOPS: due to level %d: %u\n",
+			mmc_hostname(card->host), i, bkops_stats->bkops_level[i]);
 	}
-
-	snprintf(temp_buf, TEMP_BUF_SIZE,
-		 "%s: BKOPS: stopped due to HPI: %u\n",
-		 mmc_hostname(card->host), bkops_stats->hpi);
-	strlcat(ubuf, temp_buf, cnt);
-
-	snprintf(temp_buf, TEMP_BUF_SIZE,
-		 "%s: BKOPS: how many time host was suspended: %u\n",
-		 mmc_hostname(card->host), bkops_stats->suspend);
-	strlcat(ubuf, temp_buf, cnt);
-
+	seq_printf(s, "%s: BKOPS: stopped due to HPI: %u\n",
+		mmc_hostname(card->host), bkops_stats->hpi);
+	seq_printf(s, "%s: BKOPS: how many time host was suspended: %u\n",
+		mmc_hostname(card->host), bkops_stats->suspend);
 	spin_unlock(&bkops_stats->lock);
-
-	kfree(temp_buf);
-
-	pr_info("%s", ubuf);
-
 exit:
-	if (bkops_stats->print_stats == 1) {
+	if (bkops_stats->print_stats == 1)
 		bkops_stats->print_stats = 0;
-		return strnlen(ubuf, cnt);
-	}
 
 	return 0;
+}
+
+static int mmc_bkops_stats_open(struct inode *inode, struct file *filp)
+{
+	struct mmc_card *card = inode->i_private;
+
+	card->bkops_info.bkops_stats.print_stats = 1;
+
+	return single_open(filp, mmc_bkops_stats_show, inode->i_private);
 }
 
 static ssize_t mmc_bkops_stats_write(struct file *filp,
 				      const char __user *ubuf, size_t cnt,
 				      loff_t *ppos)
 {
-	struct mmc_card *card = filp->private_data;
+	struct inode *in = filp->f_inode;
+	struct mmc_card *card = (struct mmc_card *)(in->i_private);
 	int value;
 	struct mmc_bkops_stats *bkops_stats;
 
 	if (!card)
 		return cnt;
 
-	if (!access_ok(VERIFY_READ, ubuf, cnt))
-		return cnt;
-
 	bkops_stats = &card->bkops_info.bkops_stats;
 
-	sscanf(ubuf, "%d", &value);
+	if (copy_from_user(&value, ubuf, sizeof(int)))
+		return -EFAULT;
+
 	if (value) {
 		mmc_blk_init_bkops_statistics(card);
 	} else {
@@ -775,8 +772,10 @@ static ssize_t mmc_bkops_stats_write(struct file *filp,
 
 static const struct file_operations mmc_dbg_bkops_stats_fops = {
 	.open		= mmc_bkops_stats_open,
-	.read		= mmc_bkops_stats_read,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
 	.write		= mmc_bkops_stats_write,
+	.release	= single_release,
 };
 
 void mmc_add_card_debugfs(struct mmc_card *card)
@@ -819,7 +818,7 @@ void mmc_add_card_debugfs(struct mmc_card *card)
 
 	if (mmc_card_mmc(card) && (card->ext_csd.rev >= 5) &&
 	    (mmc_card_get_bkops_en_manual(card)))
-		if (!debugfs_create_file("bkops_stats", S_IRUSR, root, card,
+		if (!debugfs_create_file("bkops_stats", S_IRUSR | S_IWUSR, root, card,
 					 &mmc_dbg_bkops_stats_fops))
 			goto err;
 

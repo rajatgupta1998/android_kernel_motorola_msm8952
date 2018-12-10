@@ -440,7 +440,6 @@ static void cpufreq_powerstats_create(unsigned int cpu,
 	unsigned int alloc_size, i = 0, j = 0, ret = 0;
 	struct cpufreq_power_stats *powerstats;
 	struct device_node *cpu_node;
-	char device_path[16];
 
 	powerstats = kzalloc(sizeof(struct cpufreq_power_stats),
 			GFP_KERNEL);
@@ -468,8 +467,7 @@ static void cpufreq_powerstats_create(unsigned int cpu,
 	}
 	powerstats->state_num = j;
 
-	snprintf(device_path, sizeof(device_path), "/cpus/cpu@%d", cpu);
-	cpu_node = of_find_node_by_path(device_path);
+	cpu_node = of_get_cpu_node(cpu, NULL);
 	if (cpu_node) {
 		ret = of_property_read_u32_array(cpu_node, "current",
 				powerstats->curr, count);
@@ -528,7 +526,7 @@ static void add_all_freq_table(unsigned int freq)
 	unsigned int size;
 	size = sizeof(unsigned int) * (all_freq_table->table_size + 1);
 	all_freq_table->freq_table = krealloc(all_freq_table->freq_table,
-			size, GFP_ATOMIC);
+			size, GFP_KERNEL);
 	if (IS_ERR(all_freq_table->freq_table)) {
 		pr_warn("Could not reallocate memory for freq_table\n");
 		all_freq_table->freq_table = NULL;

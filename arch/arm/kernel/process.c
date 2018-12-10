@@ -173,10 +173,12 @@ void (*arm_pm_idle)(void);
 
 static void default_idle(void)
 {
-	if (arm_pm_idle)
-		arm_pm_idle();
-	else
-		cpu_do_idle();
+	if (!need_resched()) {
+		if (arm_pm_idle)
+			arm_pm_idle();
+		else
+			cpu_do_idle();
+	}
 	local_irq_enable();
 }
 
@@ -437,8 +439,7 @@ void __show_regs(struct pt_regs *regs)
 		printk("Control: %08x%s\n", ctrl, buf);
 	}
 #endif
-	if (get_fs() == get_ds())
-		show_extra_register_data(regs, 128);
+	show_extra_register_data(regs, 128);
 }
 
 void show_regs(struct pt_regs * regs)

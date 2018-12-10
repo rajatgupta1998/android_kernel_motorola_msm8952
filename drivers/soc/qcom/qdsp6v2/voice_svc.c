@@ -576,7 +576,6 @@ static ssize_t voice_svc_read(struct file *file, char __user *arg,
 				spin_flags);
 
 	ret = count;
-
 unlock:
 	mutex_unlock(&prtd->response_mutex_lock);
 done:

@@ -25,6 +25,8 @@
 
 #define FEATURE_SUPPORTED(x)	((feature_mask << (i * 8)) & (1 << x))
 
+uint16_t md_support;
+
 /* tracks which peripheral is undergoing SSR */
 static uint16_t reg_dirty;
 static void diag_notify_md_client(uint8_t peripheral, int data);
@@ -108,6 +110,12 @@ void diag_notify_md_client(uint8_t peripheral, int data)
 {
 	int stat = 0;
 	struct siginfo info;
+
+	if (data == DIAG_STATUS_OPEN) {
+		md_support |= PERIPHERAL_MASK(peripheral);
+	} else if (data == DIAG_STATUS_CLOSED) {
+		md_support ^= PERIPHERAL_MASK(peripheral);
+	}
 
 	if (driver->logging_mode != MEMORY_DEVICE_MODE)
 		return;
@@ -710,7 +718,7 @@ void diag_cntl_process_read_data(struct diagfwd_info *p_info, void *buf,
 	return;
 }
 
-static int diag_compute_real_time(int idx)
+int diag_compute_real_time(int idx)
 {
 	int real_time = MODE_REALTIME;
 	if (driver->proc_active_mask == 0) {

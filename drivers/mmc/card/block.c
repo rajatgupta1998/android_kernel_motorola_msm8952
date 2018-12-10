@@ -706,6 +706,11 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 		goto cmd_done;
 	}
 
+	if (idata->ic.opcode == MMC_FFU_INVOKE_OP) {
+		err = mmc_ffu_invoke(card, idata->buf);
+		goto cmd_done;
+	}
+
 	cmd.opcode = idata->ic.opcode;
 	cmd.arg = idata->ic.arg;
 	cmd.flags = idata->ic.flags;
@@ -2953,6 +2958,9 @@ static int mmc_blk_cmdq_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		spin_unlock_bh(&host->clk_scaling.lock);
 	}
 
+	if (!blk_rq_tagged(req))
+		return 0;
+
 	BUG_ON(test_and_set_bit(req->tag, &host->cmdq_ctx.data_active_reqs));
 	BUG_ON((req->tag < 0) || (req->tag > card->ext_csd.cmdq_depth));
 	BUG_ON(test_and_set_bit(req->tag, &host->cmdq_ctx.active_reqs));
@@ -3301,6 +3309,9 @@ void mmc_blk_cmdq_complete_rq(struct request *rq)
 	struct mmc_queue *mq = (struct mmc_queue *)rq->q->queuedata;
 	int err = 0;
 	bool is_dcmd = false;
+	unsigned long flags;
+
+	local_irq_save(flags);
 
 	if (mrq->cmd && mrq->cmd->error)
 		err = mrq->cmd->error;
@@ -3349,6 +3360,8 @@ void mmc_blk_cmdq_complete_rq(struct request *rq)
 	blk_end_request(rq, err, cmdq_req->data.bytes_xfered);
 
 out:
+	local_irq_restore(flags);
+
 	if (host->clk_scaling.enable) {
 		spin_lock_bh(&host->clk_scaling.lock);
 		mmc_update_clk_scaling(host, is_dcmd);
@@ -3702,7 +3715,7 @@ static int mmc_blk_cmdq_issue_rq(struct mmc_queue *mq, struct request *req)
 			ret = mmc_blk_cmdq_issue_discard_rq(mq, req);
 	} else if (cmd_flags & REQ_FLUSH) {
 		ret = mmc_blk_cmdq_issue_flush_rq(mq, req);
-	} else {
+	} else if (cmd_flags & REQ_QUEUED) {
 		ret = mmc_blk_cmdq_issue_rw_rq(mq, req);
 	}
 

@@ -16,7 +16,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#include <linux/ctype.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -314,6 +314,22 @@ static bool in_bounds(unsigned long offset,
 	return 1;
 }
 
+/* Check offset + size <= bound.  1 if in bounds, 0 otherwise. */
+static bool in_bounds(unsigned long offset,
+		      unsigned long size,
+		      unsigned long bound)
+{
+	if (offset > bound || size > bound) {
+		pr_err("%s: %lu or %lu > %lu\n", __func__, offset, size, bound);
+		return 0;
+	}
+	if (offset > (bound - size)) {
+		pr_err("%s: %lu > %lu - %lu\n", __func__, offset, size, bound);
+		return 0;
+	}
+	return 1;
+}
+
 static unsigned int extract_uint(const unsigned char *ptr)
 {
 	return (unsigned int)ptr[0] +
@@ -409,7 +425,7 @@ static int parse_header(void)
 	}
 	/* get config offset*/
 	if (img->config_size) {
-		// FW_IMAGE_OFFSET + image_size was ok as above
+		/* FW_IMAGE_OFFSET + image_size was ok as above */
 		if (!in_bounds(FW_IMAGE_OFFSET + img->image_size,
 			       img->config_size, fwu->full_update_size)) {
 			dev_err(&fwu->rmi4_data->i2c_client->dev,
@@ -743,7 +759,6 @@ static int fwu_wait_for_idle(int timeout_ms)
 static enum flash_area fwu_go_nogo(void)
 {
 	int retval = 0;
-	int index = 0;
 	int deviceFirmwareID;
 	int imageConfigID;
 	int deviceConfigID;
@@ -848,6 +863,8 @@ static enum flash_area fwu_go_nogo(void)
 			__func__);
 		imageFirmwareID = img->firmware_id;
 	} else {
+		size_t index, max_index;
+
 		if (!fwu->image_name) {
 			dev_info(&i2c_client->dev,
 				"%s: Unknown image file name\n",
@@ -864,8 +881,11 @@ static enum flash_area fwu_go_nogo(void)
 			goto exit;
 		}
 
+		max_index = min((ptrdiff_t)(MAX_FIRMWARE_ID_LEN - 1),
+				&fwu->image_name[NAME_BUFFER_SIZE] - strptr);
+		index = 0;
 		strptr += 2;
-		while (strptr[index] >= '0' && strptr[index] <= '9') {
+		while (index < max_index && isdigit(strptr[index])) {
 			imagePR[index] = strptr[index];
 			index++;
 		}

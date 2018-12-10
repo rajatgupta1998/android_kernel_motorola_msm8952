@@ -1,0 +1,128 @@
+/* Copyright (c) 2015, Motorola Mobility Inc. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+
+/dts-v1/;
+
+#include "msm8952-athene.dtsi"
+#include "dsi-panel-mot-tdi-546-1080p-cmd.dtsi"
+#include "msm8952-moto-fps.dtsi"
+/ {
+	qcom,board-id = <0x41 0x8000>, <0x41 0x800d>;
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&mot_tdi_546_1080p_cmd_v0>;
+};
+
+&mdss_mdp {
+	/delete-property/ mot_boe_546_1080p_cmd_v0;
+};
+
+&cci {
+	qcom,camera@0 {
+		cam_vdig-supply = <&pm8950_l23>;
+		qcom,cam-vreg-min-voltage = <1200000 1800000>;
+		qcom,cam-vreg-max-voltage = <1200000 1800000>;
+		qcom,cam-vreg-op-mode = <1200000 1800000>;
+		/delete-property/ gpios;
+		gpios = <&msm_gpio 26 0>,
+			<&msm_gpio 36 0>;
+		/delete-property/ qcom,gpio-vdig;
+		qcom,gpio-req-tbl-num = <0 1>;
+		qcom,gpio-req-tbl-flags = <1 0>;
+		/delete-property/ qcom,gpio-req-tbl-label;
+		qcom,gpio-req-tbl-label = "CAMIF_MCLK0",
+					  "CAM_RESET0";
+	};
+
+	st,stmvl53l0
+	{
+		cell-index = <1>;
+		compatible = "st,stmvl53l0";
+		qcom,cci-master = <0>;
+		gpios = <&msm_gpio 86 0>,
+			<&msm_gpio 43 0>;
+		qcom,gpio-reset = <0>;
+		qcom,gpio-req-tbl-num = <0 1>;
+		qcom,gpio-req-tbl-flags = <0 1>;
+		qcom,gpio-req-tbl-label ="TOF_XSHUTDOWN","TOF_INT";
+		pinctrl-names = "laser_default", "laser_suspend";
+		pinctrl-0 = <&laser_active >;
+		pinctrl-1 = <&laser_suspend >;
+	};
+};
+
+&soc {
+	tlmm_pinmux: pinctrl@1000000 {
+		laser_active {
+			/* reset, interrupt */
+			qcom,pins = <&gp 86>,<&gp 43>;
+			qcom,num-grp-pins = <2>;
+			qcom,pin-func = <0>;
+			label = "laser-active";
+			/* active state */
+			laser_active: laser_active {
+				drive-strength = <2>; /* 2 MA */
+				bias-disable; /* No PULL */
+			};
+		};
+		laser_suspend {
+			/* reset,interrupt  */
+			qcom,pins = <&gp 86>,<&gp 43> ;
+			qcom,num-grp-pins = <2>;
+			qcom,pin-func = <1>;
+			label = "laser-suspend";
+			/*suspended state */
+			laser_suspend: laser_suspend {
+				drive-strength = <2>; /* 2 MA */
+				bias-disable; /* No PULL */
+			};
+		};
+	};
+};
+
+&i2c_2 {
+	cs35l34@40 {
+		status = "disabled";
+	};
+};
+
+&i2c_3 { /* BLSP1 QUP3 */
+	synaptics@20 {
+		touch_vdd-supply = <&pm8950_l22>;
+	};
+};
+
+&rpm_bus {
+	rpm-regulator-ldoa22 {
+		pm8950_l22: regulator-l22 {
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+			qcom,init-voltage = <2800000>;
+		};
+	};
+};
+
+&stml0xx{
+	sensor2-supply = <&pm8950_l17>;
+};
+
+&i2c_3 { /* BLSP1 QUP3 */
+	synaptics@20 {
+		touch_vdd-supply = <&pm8950_l22>;
+	};
+};
+
+&i2c_4 {
+	status = "disabled";
+};
