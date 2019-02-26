@@ -1354,24 +1354,25 @@ static int smb1360_set_minimum_usb_current(struct smb1360_chip *chip)
 		pr_debug("USB min current set to 100mA\n");
 		/* set input current limit to minimum (300mA) */
 		rc = smb1360_masked_write(chip, CFG_BATT_CHG_ICL_REG,
-						INPUT_CURR_LIM_MASK,
-						INPUT_CURR_LIM_300MA);
+			INPUT_CURR_LIM_MASK,
+			INPUT_CURR_LIM_300MA);
 		if (rc)
 			pr_err("Couldn't set ICL mA rc=%d\n", rc);
 
-		if (!(chip->workaround_flags & WRKRND_USB100_FAIL))
+		if (!(chip->workaround_flags & WRKRND_USB100_FAIL)) {
 			rc = smb1360_masked_write(chip, CMD_IL_REG,
-					USB_CTRL_MASK, USB_100_BIT);
+				USB_CTRL_MASK, USB_100_BIT);
 			if (rc)
 				pr_err("Couldn't configure for USB100 rc=%d\n",
-								rc);
+					rc);
+		}
 	} else {
 		pr_debug("USB min current set to 500mA\n");
 		rc = smb1360_masked_write(chip, CMD_IL_REG,
-				USB_CTRL_MASK, USB_500_BIT);
+			USB_CTRL_MASK, USB_500_BIT);
 		if (rc)
 			pr_err("Couldn't configure for USB100 rc=%d\n",
-							rc);
+				rc);
 	}
 
 	return rc;

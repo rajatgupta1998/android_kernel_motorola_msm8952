@@ -45,15 +45,15 @@ int __ipa_generate_rt_hw_rule_v2(enum ipa_ip_type ip,
 		struct ipa_rt_entry *entry, u8 *buf)
 {
 	struct ipa_rt_rule_hw_hdr *rule_hdr;
-	const struct ipa_rt_rule *rule =
-		(const struct ipa_rt_rule *)&entry->rule;
+	const struct ipa_rt_rule *rule = (
+		const struct ipa_rt_rule *)&entry->rule;
 	u16 en_rule = 0;
 	u32 tmp[IPA_RT_FLT_HW_RULE_BUF_SIZE/4];
 	u8 *start;
 	int pipe_idx;
 
 	if (buf == NULL) {
-		memset(tmp, 0, (IPA_RT_FLT_HW_RULE_BUF_SIZE/4));
+		memset(tmp, 0, sizeof(tmp));
 		buf = (u8 *)tmp;
 	}
 

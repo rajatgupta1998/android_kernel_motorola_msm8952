@@ -635,8 +635,8 @@ static int cs35l34_handle_of_data(struct i2c_client *i2c_client,
 	unsigned int val;
 
 	of_property_read_u32(np, "cirrus,boost-manager", &val);
+	pdata->boost_mng = val;
 	switch (val) {
-		pdata->boost_mng = val;
 		break;
 	default:
 		dev_err(&i2c_client->dev,
@@ -644,8 +644,8 @@ static int cs35l34_handle_of_data(struct i2c_client *i2c_client,
 	}
 
 	of_property_read_u32(np, "cirrus,sdout-datacfg", &val);
+	pdata->sdout_datacfg = val;
 	switch (val) {
-		pdata->sdout_datacfg = val;
 		break;
 	default:
 		dev_err(&i2c_client->dev,
