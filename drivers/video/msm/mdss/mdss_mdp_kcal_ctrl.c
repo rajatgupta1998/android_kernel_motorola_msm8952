@@ -148,6 +148,10 @@ static uint32_t igc_Table_RGB[IGC_LUT_ENTRIES] = {
 	48, 32, 16, 0
 };
 
+#ifdef CONFIG_KLAPSE
+struct kcal_lut_data *lut_cpy;
+#endif
+
 static bool mdss_mdp_kcal_is_panel_on(void)
 {
 	int i;
@@ -530,6 +534,17 @@ static int fb_notifier_callback(struct notifier_block *nb,
 }
 #endif
 
+#ifdef CONFIG_KLAPSE
+void kcal_klapse_push(int r, int g, int b)
+{
+	lut_cpy->red = r;
+	lut_cpy->green = g;
+	lut_cpy->blue = b;
+
+	mdss_mdp_kcal_update_pcc(lut_cpy);
+}
+#endif
+
 static int kcal_ctrl_probe(struct platform_device *pdev)
 {
 	int ret;
@@ -571,6 +586,10 @@ static int kcal_ctrl_probe(struct platform_device *pdev)
 		pr_err("%s: unable to register fb notifier\n", __func__);
 		goto out_free_mem;
 	}
+#endif
+
+#ifdef CONFIG_KLAPSE
+	lut_cpy = lut_data;
 #endif
 
 	ret = device_create_file(&pdev->dev, &dev_attr_kcal);
