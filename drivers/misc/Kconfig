@@ -650,6 +650,7 @@ config QCOM_LIQUID_DOCK
 	  This option enables support for the USB and Ethernet ports found on
 	  the docking station of various models of Qualcomm Technology's
 	  LiQUID Mobile Development Platforms.
+
 config UID_SYS_STATS
 	tristate "Per-UID statistics"
 	depends on PROFILING
