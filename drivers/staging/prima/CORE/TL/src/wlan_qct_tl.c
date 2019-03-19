@@ -8736,7 +8736,7 @@ WLANTL_STATxAuth
 
   /* This code is to send traffic with lower priority AC when we does not 
      get admitted to send it. Today HAL does not downgrade AC so this code 
-     does not get executed.(In other words, HAL doesn’t change tid. The if 
+     does not get executed.(In other words, HAL doesn't change tid. The if 
      statement is always false.)
      NOTE: In the case of LA downgrade occurs in HDD (that was the change 
      Phani made during WMM-AC plugfest). If WM & BMP also took this approach, 
@@ -11842,8 +11842,8 @@ WLAN_TLAPGetNextTxIds
 
   ++ucNextSTA;
 
-  if ( WLAN_MAX_STA_COUNT <= ucNextSTA )
-    ucNextSTA = 0;
+    if ( WLAN_MAX_STA_COUNT <= ucNextSTA )
+      ucNextSTA = 0;
 
     isServed = FALSE;
     if ( 0 == pTLCb->ucCurLeftWeight )
