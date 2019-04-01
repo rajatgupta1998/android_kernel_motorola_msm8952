@@ -25,6 +25,14 @@ config MEDIA_CAMERA_SUPPORT
 
 	  Say Y when you have a webcam or a video capture grabber board.
 
+config ISDBT_FC8300
+	tristate "FCI digital TV support"
+	---help---
+	  Enable digital TV support for Moto G4 (athene)
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called isdbt.
+
 config MEDIA_ANALOG_TV_SUPPORT
 	bool "Analog TV support"
 	---help---
