@@ -4,7 +4,7 @@ EXTRA_CFLAGS += -Idrivers/media/isdbt/inc
 KDIR = /home/android/workspace/S5PV210/kernel
 ODIR = drivers/media/isdbt
 
-obj-m = isdbt.o
+obj-$(CONFIG_ISDBT_FC8300) = isdbt.o
 isdbt-objs = $(OBJS)
 
 all:
