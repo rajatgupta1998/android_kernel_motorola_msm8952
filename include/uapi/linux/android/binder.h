@@ -131,7 +131,7 @@ enum {
 
 /* struct binder_fd_array_object - object describing an array of fds in a buffer
  * @hdr:		common header structure
- * @pad:		padding to ensure correct alignment
+ * @pad:                padding to ensure correct alignment
  * @num_fds:		number of file descriptors in the buffer
  * @parent:		index in offset array to buffer holding the fd array
  * @parent_offset:	start offset of fd array in the buffer
@@ -152,7 +152,7 @@ enum {
  */
 struct binder_fd_array_object {
 	struct binder_object_header	hdr;
-	__u32				pad;
+	__u32                           pad;
 	binder_size_t			num_fds;
 	binder_size_t			parent;
 	binder_size_t			parent_offset;
@@ -175,7 +175,7 @@ struct binder_write_read {
 /* Use with BINDER_VERSION, driver fills in fields. */
 struct binder_version {
 	/* driver protocol version -- increment with incompatible change */
-	__s32       protocol_version;
+	__s32	protocol_version;
 };
 
 /* This is the current protocol version. */
@@ -229,7 +229,7 @@ struct binder_transaction_data {
 	__u32		code;		/* transaction command */
 
 	/* General information about the transaction. */
-	__u32	        flags;
+	__u32		flags;
 	pid_t		sender_pid;
 	uid_t		sender_euid;
 	binder_size_t	data_size;	/* number of bytes of data */
@@ -446,4 +446,3 @@ enum binder_driver_command_protocol {
 };
 
 #endif /* _UAPI_LINUX_BINDER_H */
-
